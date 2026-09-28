@@ -18,6 +18,14 @@ linters:
     - staticcheck
     - err113
     - nlreturn
+  exclusions:
+    rules:
+      # Integration and unit tests intentionally use fake credentials in
+      # connection strings to verify that passwords never leak into diagnostics.
+      - path: _test\.go
+        linters:
+          - gosec
+        text: "G101"
 
 formatters:
   enable:

@@ -3,6 +3,14 @@ GOLANGCI_LINT ?= golangci-lint
 GOLANGCI_LINT_VERSION ?= 2.14.0
 GO_TARGET_VERSION := $(shell $(GO) list -m -f "{{.GoVersion}}")
 ENV_FILE ?= .env
+# Local overrides (ports, password) are read from .env when it exists; see .env.example.
+sinclude $(ENV_FILE)
+
+POSTGRES_PORT ?= 5432
+TEST_POSTGRES_PORT ?= 5433
+# Integration tests use the db-test compose service by default; override with
+# your own TEST_DATABASE_URL to run them against another PostgreSQL instance.
+export TEST_DATABASE_URL ?= postgres://auction:$(POSTGRES_PASSWORD)@localhost:$(TEST_POSTGRES_PORT)/auction_test?sslmode=disable
 
 ifeq ($(OS),Windows_NT)
 EXE := .exe
@@ -18,7 +26,7 @@ help:
 	@echo build             Build bin/server
 	@echo app-help          Show server usage
 	@echo run               Start the web server
-	@echo migrate           Run the migration container - planned for step 03
+	@echo migrate           Apply SQL from migrations/ with the migration container
 	@echo seed              Run the demo data script - planned for step 04
 	@echo lint              Check Go code with golangci-lint
 	@echo fmt               Format Go code with golangci-lint
@@ -44,7 +52,7 @@ run:
 	$(RUN)
 
 migrate:
-	$(error Migration container is not implemented yet - step 03)
+	docker compose run --rm migrate
 
 seed:
 	$(error Seed script is not implemented yet - step 04)
@@ -73,15 +81,18 @@ test-race:
 	$(GO) test -race ./...
 
 test-integration:
-	$(if $(TEST_DATABASE_URL),,$(error TEST_DATABASE_URL is required for integration tests))
+	docker compose up -d --wait db-test
+	docker compose run --rm migrate-test
 	$(GO) test -tags=integration ./...
 
 test-integration-race:
-	$(if $(TEST_DATABASE_URL),,$(error TEST_DATABASE_URL is required for integration tests))
+	docker compose up -d --wait db-test
+	docker compose run --rm migrate-test
 	$(GO) test -race -tags=integration ./...
 
 test-integration-repeat:
-	$(if $(TEST_DATABASE_URL),,$(error TEST_DATABASE_URL is required for integration tests))
+	docker compose up -d --wait db-test
+	docker compose run --rm migrate-test
 	$(GO) test -tags=integration -count=10 ./...
 
 check: go-version build fmt-check lint vet test

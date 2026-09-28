@@ -39,9 +39,9 @@ func NewHandler(logger *slog.Logger) (http.Handler, error) {
 		h.Error(w, r, http.StatusNotFound, "not_found", "Страница не найдена")
 	})
 
-	wrappedHandler := h.enrichWithID(
-		h.recoverPanic(mux),
-	)
+	// enrichWithID applies recoverPanic inside itself, so the request ID is
+	// available to the panic and request logs.
+	wrappedHandler := h.enrichWithID(mux)
 
 	return wrappedHandler, nil
 }

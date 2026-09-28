@@ -12,11 +12,26 @@ import (
 
 	"github.com/Lexv0lk/auction/internal/config"
 	httpapp "github.com/Lexv0lk/auction/internal/http"
+	"github.com/Lexv0lk/auction/internal/postgres"
 )
 
 // Run serves HTTP until cancellation. Step 11 will add the background auction
 // loop to this same lifecycle, using the same dependencies and shutdown budget.
 func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
+	pool, err := postgres.Connect(ctx, cfg.Database)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	// The server refuses to serve before the database carries exactly the
+	// schema version this release supports; it never applies migrations itself.
+	schemaCtx, cancel := context.WithTimeout(ctx, cfg.Database.Timeout)
+	defer cancel()
+	if err := postgres.CheckSchemaVersion(schemaCtx, pool); err != nil {
+		return err
+	}
+
 	handler, err := httpapp.NewHandler(logger)
 	if err != nil {
 		return err

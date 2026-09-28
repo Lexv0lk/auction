@@ -12,9 +12,39 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Lexv0lk/auction/internal/config"
 )
 
 var errIncompleteResponse = errors.New("incomplete response")
+
+func TestRunChecksDatabaseBeforeServing(t *testing.T) {
+	cfg := config.Config{
+		Database: config.Database{
+			URL:      "postgres://auction:startup-secret@127.0.0.1:1/auction?sslmode=disable",
+			MaxConns: 2,
+			Timeout:  2 * time.Second,
+		},
+		ShutdownTimeout: time.Second,
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	started := time.Now()
+	result := make(chan error, 1)
+	go func() { result <- Run(ctx, cfg, slog.New(slog.NewJSONHandler(io.Discard, nil))) }()
+
+	select {
+	case err := <-result:
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "database")
+		assert.NotContains(t, err.Error(), "startup-secret", "the password must not leak into diagnostics")
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "startup did not fail on an unreachable database")
+	}
+	assert.Less(t, time.Since(started), 5*time.Second, "startup check must finish within the configured deadline")
+}
 
 func TestShutdown(t *testing.T) {
 	for _, forced := range []bool{false, true} {
