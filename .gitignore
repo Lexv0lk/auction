@@ -16,6 +16,8 @@
 coverage.*
 *.coverprofile
 profile.cov
+/auction
+/bin/
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
@@ -28,8 +30,9 @@ go.work.sum
 .env
 
 # Editor/IDE
- .idea/
+.idea/
 # .vscode/
 
 # AI
 realisation_steps/
+AGENTS.md
