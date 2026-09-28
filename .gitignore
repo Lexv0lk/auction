@@ -36,3 +36,5 @@ go.work.sum
 # AI
 realisation_steps/
 AGENTS.md
+.zcodeignore
+docs/
