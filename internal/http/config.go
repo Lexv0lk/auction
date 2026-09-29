@@ -38,9 +38,10 @@ type Categories interface {
 	Delete(ctx context.Context, id int64) error
 }
 
-// Lots is the draft-management contract the admin handlers depend on. Only
-// the editable fields travel into the service: status and result fields are
-// decided by the lot operations themselves.
+// Lots is the lot-service contract the HTTP layer depends on. Only the
+// editable fields travel into the service: status and result fields are
+// decided by the lot operations themselves. The participant reads never
+// return drafts.
 type Lots interface {
 	List(ctx context.Context) ([]lot.Lot, error)
 	Get(ctx context.Context, id int64) (lot.Lot, error)
@@ -48,6 +49,9 @@ type Lots interface {
 	Update(ctx context.Context, id int64, input lot.Input) (lot.Lot, error)
 	Delete(ctx context.Context, id int64) error
 	Publish(ctx context.Context, id int64) (lot.Lot, error)
+	Catalog(ctx context.Context, filter lot.CatalogFilter) ([]lot.CatalogItem, bool, error)
+	GetPublicLot(ctx context.Context, id int64) (lot.PublicLot, error)
+	ListBids(ctx context.Context, lotID int64, page int) ([]lot.Bid, bool, error)
 }
 
 // NewCSRFKey derives the CSRF signing key from the configured secret. Hashing

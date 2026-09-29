@@ -1,0 +1,42 @@
+{{define "content"}}
+<h1>Каталог лотов</h1>
+<form method="get" action="/lots" class="filters">
+  <p><label for="filter-category">Категория</label><br>
+  <select id="filter-category" name="category">
+    <option value="">Все категории</option>
+    {{range .Categories}}<option value="{{.ID}}"{{if eq .ID $.CategoryID}} selected{{end}}>{{.Name}}</option>{{end}}
+  </select></p>
+  <p><label for="filter-state">Состояние</label><br>
+  <select id="filter-state" name="state">
+    <option value="">Все состояния</option>
+    <option value="active"{{if eq .State "active"}} selected{{end}}>Торги идут</option>
+    <option value="determining"{{if eq .State "determining"}} selected{{end}}>Определяется результат</option>
+    <option value="finished"{{if eq .State "finished"}} selected{{end}}>Торги завершены</option>
+  </select></p>
+  <button type="submit">Показать</button>
+</form>
+{{if .Items}}
+<table class="lots">
+  <thead>
+  <tr><th>Название</th><th>Категория</th><th>Текущая цена</th><th>Состояние</th><th>Дедлайн</th></tr>
+  </thead>
+  <tbody>
+  {{range .Items}}
+  <tr>
+    <td><a href="/lots/{{.ID}}">{{.Title}}</a></td>
+    <td>{{.CategoryName}}</td>
+    <td>{{.CurrentPrice}}</td>
+    <td>{{displayStateLabel .State}}</td>
+    <td>{{fmtUTC .EndsAt}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+{{else}}
+<p>Лотов по выбранным условиям нет.</p>
+{{end}}
+<p class="pagination">
+  {{if .HasPrev}}<a href="{{.PrevURL}}">← Предыдущая страница</a>{{end}}
+  {{if .HasNext}}<a href="{{.NextURL}}">Следующая страница →</a>{{end}}
+</p>
+{{end}}

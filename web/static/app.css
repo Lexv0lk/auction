@@ -15,3 +15,14 @@ table.lots th { text-align: left; border-bottom: 2px solid #d8dde3; padding: 0.4
 table.lots td { border-bottom: 1px solid #d8dde3; padding: 0.4rem 0.5rem; }
 table.lots .actions { text-align: right; white-space: nowrap; }
 table.lots .actions .inline { display: inline; margin-left: 0.75rem; }
+
+table.bids { border-collapse: collapse; width: 100%; }
+table.bids th { text-align: left; border-bottom: 2px solid #d8dde3; padding: 0.4rem 0.5rem; font-weight: 600; }
+table.bids td { border-bottom: 1px solid #d8dde3; padding: 0.4rem 0.5rem; }
+
+dl.lot-facts dt { font-weight: 600; margin-top: 0.5rem; }
+dl.lot-facts dd { margin: 0 0 0 0; }
+.lot-description { white-space: pre-wrap; margin: 1rem 0; }
+.lot-result { border: 1px solid #2c6e49; background: #edf7f0; color: #1d4630; padding: 0.5rem 0.75rem; border-radius: 4px; }
+.pagination { display: flex; gap: 1rem; }
+form.filters p { margin: 0.25rem 0; }

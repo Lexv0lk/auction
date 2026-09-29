@@ -25,6 +25,14 @@ func (r fakeRow) Scan(dest ...any) error {
 		switch target := target.(type) {
 		case *int64:
 			*target = r.values[i].(int64)
+		case **int64:
+			// A nil record value is a SQL NULL: the pointer stays nil.
+			if value, ok := r.values[i].(int64); ok {
+				value := value
+				*target = &value
+			} else {
+				*target = nil
+			}
 		case *string:
 			*target = r.values[i].(string)
 		case *time.Time:
@@ -122,7 +130,9 @@ func (p *fakePool) QueryRow(_ context.Context, sql string, args ...any) pgx.Row 
 	return p.row
 }
 
-func (p *fakePool) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
+func (p *fakePool) Query(_ context.Context, sql string, args ...any) (pgx.Rows, error) {
+	p.queries = append(p.queries, queryCall{sql: sql, args: args})
+
 	return p.rows, nil
 }
 

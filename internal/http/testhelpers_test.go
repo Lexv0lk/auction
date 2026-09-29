@@ -124,15 +124,23 @@ type fakeLots struct {
 	updateFunc  func(ctx context.Context, id int64, input lot.Input) (lot.Lot, error)
 	deleteFunc  func(ctx context.Context, id int64) error
 	publishFunc func(ctx context.Context, id int64) (lot.Lot, error)
+	catalogFunc func(ctx context.Context, filter lot.CatalogFilter) ([]lot.CatalogItem, bool, error)
+	publicFunc  func(ctx context.Context, id int64) (lot.PublicLot, error)
+	bidsFunc    func(ctx context.Context, lotID int64, page int) ([]lot.Bid, bool, error)
 
 	listCalls    int
 	createCalls  int
 	updateCalls  int
 	deleteCalls  int
 	publishCalls int
+	catalogCalls int
+	publicCalls  int
+	bidsCalls    int
 
-	lastInput lot.Input
-	lastID    int64
+	lastFilter lot.CatalogFilter
+	lastInput  lot.Input
+	lastID     int64
+	lastPage   int
 }
 
 func (f *fakeLots) List(ctx context.Context) ([]lot.Lot, error) {
@@ -192,6 +200,37 @@ func (f *fakeLots) Publish(ctx context.Context, id int64) (lot.Lot, error) {
 	}
 
 	return f.publishFunc(ctx, id)
+}
+
+func (f *fakeLots) Catalog(ctx context.Context, filter lot.CatalogFilter) ([]lot.CatalogItem, bool, error) {
+	f.catalogCalls++
+	f.lastFilter = filter
+	if f.catalogFunc == nil {
+		return nil, false, nil
+	}
+
+	return f.catalogFunc(ctx, filter)
+}
+
+func (f *fakeLots) GetPublicLot(ctx context.Context, id int64) (lot.PublicLot, error) {
+	f.publicCalls++
+	f.lastID = id
+	if f.publicFunc == nil {
+		return lot.PublicLot{}, nil
+	}
+
+	return f.publicFunc(ctx, id)
+}
+
+func (f *fakeLots) ListBids(ctx context.Context, lotID int64, page int) ([]lot.Bid, bool, error) {
+	f.bidsCalls++
+	f.lastID = lotID
+	f.lastPage = page
+	if f.bidsFunc == nil {
+		return nil, false, nil
+	}
+
+	return f.bidsFunc(ctx, lotID, page)
 }
 
 var testCSRFKey = []byte("unit-test-csrf-key-unit-test-csrf-")

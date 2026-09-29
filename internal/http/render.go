@@ -53,6 +53,36 @@ type lotsData struct {
 	Lots []lot.Lot
 }
 
+// catalogData is the payload of the participant catalog; the filters echo
+// the current selection so the form stays filled.
+type catalogData struct {
+	pageData
+	Items      []lot.CatalogItem
+	Categories []category.Category
+	CategoryID int64
+	State      string
+	PrevURL    string
+	NextURL    string
+	HasPrev    bool
+	HasNext    bool
+}
+
+// lotPublicData is the payload of the published lot page; MinimumNextBid is
+// nil when the state accepts no next bid (closed bidding or the int64
+// maximum reached).
+type lotPublicData struct {
+	pageData
+	Lot            lot.PublicLot
+	MinimumNextBid *int64
+	CanBid         bool
+	Bids           []lot.Bid
+	BidsPage       int
+	PrevBidsURL    string
+	NextBidsURL    string
+	BidsHasPrev    bool
+	BidsHasNext    bool
+}
+
 type errorData struct {
 	pageData
 	Status    int
@@ -62,7 +92,9 @@ type errorData struct {
 
 // templateFuncs adds the presentation helpers shared by the pages: the lot
 // deadlines always display in UTC (the zone is part of the text), the status
-// labels are the user-visible names of the fixed lot statuses.
+// labels are the user-visible names of the fixed lot statuses, and the
+// display-state labels distinguish the running bidding from the result
+// determination of an overdue active lot.
 var templateFuncs = template.FuncMap{
 	"fmtUTC": func(t time.Time) string {
 		return t.In(time.UTC).Format("02.01.2006 15:04") + " UTC"
@@ -78,6 +110,21 @@ var templateFuncs = template.FuncMap{
 		default:
 			return status
 		}
+	},
+	"displayStateLabel": func(state string) string {
+		switch state {
+		case lot.DisplayStateActive:
+			return "торги идут"
+		case lot.DisplayStateDetermining:
+			return "торги завершены, определяется результат"
+		case lot.DisplayStateFinished:
+			return "торги завершены"
+		default:
+			return state
+		}
+	},
+	"rfc3339": func(t time.Time) string {
+		return t.UTC().Format(time.RFC3339)
 	},
 }
 
@@ -99,6 +146,8 @@ func parsePageTemplates() (map[string]*template.Template, error) {
 		"category_edit.html": {"templates/layout.gohtml", "templates/category_edit.gohtml"},
 		"lots.html":          {"templates/layout.gohtml", "templates/lots.gohtml"},
 		"lot_form.html":      {"templates/layout.gohtml", "templates/lot_form.gohtml"},
+		"catalog.html":       {"templates/layout.gohtml", "templates/catalog.gohtml"},
+		"lot_page.html":      {"templates/layout.gohtml", "templates/lot_page.gohtml"},
 	}
 	parsed := make(map[string]*template.Template, len(pages))
 	for name, files := range pages {

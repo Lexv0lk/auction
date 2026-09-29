@@ -65,6 +65,14 @@ func NewHandler(logger *slog.Logger, authenticator Authenticator, categories Cat
 	mux.Handle("POST /admin/lots/{id}/delete", adminOnly(http.HandlerFunc(h.lotDelete)))
 	mux.Handle("POST /admin/lots/{id}/publish", adminOnly(http.HandlerFunc(h.lotPublish)))
 
+	// The participant area is open to every authenticated role: the catalog
+	// and the lot page read only published lots, so a draft is invisible here
+	// by construction (the service answers it as a missing lot). The API
+	// route answers guests with 401 JSON, the pages with a login redirect.
+	mux.Handle("GET /lots", h.requireUser(http.HandlerFunc(h.catalogPage)))
+	mux.Handle("GET /lots/{id}", h.requireUser(http.HandlerFunc(h.lotPublicPage)))
+	mux.Handle("GET /api/lots/{id}", h.requireUser(http.HandlerFunc(h.lotStateAPI)))
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		h.Error(w, r, http.StatusNotFound, "not_found", "Страница не найдена")
 	})

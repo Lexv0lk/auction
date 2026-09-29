@@ -6,7 +6,7 @@ inside the server finishes auctions and records the result. Built as a single
 Go 1.27 binary on `net/http` with PostgreSQL.
 
 Development status and the implementation plan live in `realisation_steps/`
-(steps 01-07 are done); design documents live in `docs/`. Both directories are
+(steps 01-08 are done); design documents live in `docs/`. Both directories are
 kept locally and are not committed.
 
 ## Quick start
@@ -78,6 +78,34 @@ lands entirely in the published conditions or is refused with 409. Missing
 lots answer 404, invalid fields 422 with the entered values preserved; all
 lot operations require the admin session and a CSRF token, and successful
 changes redirect (303) so a page reload never resubmits the form.
+
+## Browsing the catalog
+
+Every signed-in user (admin or participant) sees the participant catalog at
+`/lots` (link «Каталог» in the navigation). It lists published lots only —
+drafts never appear there and answer 404 on direct access, exactly like a
+missing lot. The list shows the category, the current price (start price
+until the first bid), the display state and the UTC deadline, ordered by
+urgency: running auctions with the nearest deadlines first, then lots whose
+deadline has passed while the result is being determined, then finished lots.
+Filters (`category`, `state`) and pagination (`page`, 20 lots per page)
+survive in the address, and unknown filter values fall back to "no filter".
+
+The lot page `/lots/{id}` shows the full conditions, the state, the bid
+history (10 per page) and the result of a finished auction: the stored
+winning bid with its participant, or "no winner" for a finished lot without
+bids. An active lot whose deadline has passed shows «Торги завершены,
+определяется результат» and no bid form — the final result is decided by the
+background worker. The bid form placeholder is disabled until the bid steps
+are implemented.
+
+The page keeps itself fresh: a small script polls `GET /api/lots/{id}` every
+few seconds and updates the state, the current price, the minimum next bid
+and the countdown without reloading. The countdown and every displayed state
+are computed from the database clock, and money values travel as decimal
+strings. On a network failure the page says the shown data may be stale and
+resumes refreshing on its own after the connection returns. Without
+JavaScript the page is fully readable — every value is server-rendered.
 
 ## Demo accounts and demo data
 

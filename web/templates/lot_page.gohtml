@@ -1,0 +1,61 @@
+{{define "content"}}
+<h1>{{.Lot.Title}}</h1>
+<p id="lot-state"><strong>Состояние:</strong> <span data-lot-state>{{displayStateLabel .Lot.State}}</span></p>
+<p id="lot-data-stale" hidden role="status" aria-live="polite" class="error">Не удалось обновить данные; показанные сведения могут быть устаревшими.</p>
+<dl class="lot-facts">
+  <dt>Категория</dt><dd>{{.Lot.CategoryName}}</dd>
+  <dt>Стартовая цена</dt><dd>{{.Lot.StartPrice}}</dd>
+  <dt>Текущая цена</dt><dd id="lot-current-price" data-lot-price>{{.Lot.CurrentPrice}}</dd>
+  <dt>Минимальная следующая ставка</dt><dd id="lot-minimum-next-bid" data-lot-minimum>{{if .MinimumNextBid}}{{.MinimumNextBid}}{{else}}—{{end}}</dd>
+  <dt>Дедлайн</dt><dd>{{fmtUTC .Lot.EndsAt}}<br><span id="lot-countdown" data-lot-countdown></span></dd>
+</dl>
+<div class="lot-description"><p>{{.Lot.Description}}</p></div>
+
+{{if eq .Lot.State "finished"}}
+  {{if .Lot.WinningBidID}}
+  <p id="lot-result" class="lot-result">Победитель: <strong>{{.Lot.WinningParticipant}}</strong>, сумма ставки {{.Lot.WinningAmount}}.</p>
+  {{else}}
+  <p id="lot-result" class="lot-result">Торги завершены: победитель не определён, ставок не было.</p>
+  {{end}}
+{{else if eq .Lot.State "determining"}}
+  <p id="lot-result" class="lot-result">Торги завершены, определяется результат.</p>
+{{else if eq .Lot.State "active"}}
+  <section id="bid-form-place">
+    <h2>Ставка</h2>
+    {{if .CanBid}}
+    <p id="bid-form-note">Отправка ставок будет открыта в следующем шаге реализации; сейчас ставка не принимается.</p>
+    <form id="bid-form" method="post" action="/lots/{{.Lot.ID}}/bids">
+      <p><label for="bid-amount">Сумма ставки</label><br>
+      <input type="number" id="bid-amount" name="amount" min="{{if .MinimumNextBid}}{{.MinimumNextBid}}{{end}}" step="1" required disabled>
+      <button type="submit" disabled>Сделать ставку</button></p>
+    </form>
+    {{else}}
+    <p id="bid-form-note">Новая ставка невозможна: предел цены достигнут или торги закрыты.</p>
+    {{end}}
+  </section>
+{{end}}
+
+<section id="bid-history">
+  <h2>История ставок</h2>
+  {{if .Bids}}
+  <table class="bids">
+    <thead>
+    <tr><th>Время (UTC)</th><th>Участник</th><th>Сумма</th></tr>
+    </thead>
+    <tbody>
+    {{range .Bids}}
+    <tr><td>{{fmtUTC .AcceptedAt}}</td><td>{{.Participant}}</td><td>{{.Amount}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  <p class="pagination">
+    {{if .BidsHasPrev}}<a href="{{.PrevBidsURL}}">← Предыдущая страница</a>{{end}}
+    {{if .BidsHasNext}}<a href="{{.NextBidsURL}}">Следующая страница →</a>{{end}}
+  </p>
+  {{else}}
+  <p id="bid-history-empty">Ставок ещё не было{{if .MinimumNextBid}}; стартовая цена {{.Lot.StartPrice}} — минимальная первая ставка{{end}}.</p>
+  {{end}}
+</section>
+<p><a href="/lots">Назад к каталогу</a></p>
+<script src="/static/lot.js" data-lot-api="/api/lots/{{.Lot.ID}}" defer></script>
+{{end}}
