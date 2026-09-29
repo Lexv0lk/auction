@@ -1,0 +1,19 @@
+{{define "layout"}}<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{.Title}}</title><link rel="stylesheet" href="/static/app.css"></head>
+<body>
+<header><nav class="site-nav">
+  <a class="brand" href="/">Учебный аукцион</a>
+  {{if .User}}
+  <span class="who">{{.User.Login}} <small>({{.RoleLabel}})</small></span>
+  <form class="inline" method="post" action="/logout">{{.CSRFToken}}<button type="submit">Выход</button></form>
+  {{else}}
+  <a href="/login">Вход</a>
+  {{end}}
+</nav></header>
+<main>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+{{template "content" .}}
+</main>
+</body>
+</html>{{end}}

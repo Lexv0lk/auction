@@ -16,6 +16,10 @@ import (
 // being silently truncated.
 const maxPasswordBytes = 72
 
+// MaxBytes is the exported bcrypt input limit, so callers can reject oversized
+// input before spending any database or hashing work.
+const MaxBytes = maxPasswordBytes
+
 var (
 	// ErrEmptyPassword means a zero-length password was rejected.
 	ErrEmptyPassword = errors.New("password must not be empty")

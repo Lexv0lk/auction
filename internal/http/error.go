@@ -14,6 +14,9 @@ type errorResponse struct {
 	} `json:"error"`
 }
 
+// Error renders the shared error answer: a JSON body for API routes and the
+// layout error page for HTML routes. Technical causes (SQL errors, secrets,
+// tokens) never reach the message; the request ID ties the answer to the log.
 func (h *Handler) Error(w http.ResponseWriter, r *http.Request, status int, code, message string) {
 	requestID, _ := TryGetRequestID(r.Context())
 
@@ -29,9 +32,17 @@ func (h *Handler) Error(w http.ResponseWriter, r *http.Request, status int, code
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
+	data := errorData{
+		pageData:  h.newPageData(r),
+		Status:    status,
+		Message:   message,
+		RequestID: requestID,
+	}
+	data.Title = "Ошибка"
 
-	_ = h.errorTemplate.Execute(w, struct {
-		Status             int
-		Message, RequestID string
-	}{status, message, requestID})
+	if t, ok := h.pages["error.html"]; ok {
+		_ = t.ExecuteTemplate(w, "layout", data)
+	} else {
+		h.logger.Error("error page template is missing")
+	}
 }

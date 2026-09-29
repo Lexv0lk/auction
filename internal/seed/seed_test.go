@@ -14,6 +14,8 @@ import (
 	"github.com/Lexv0lk/auction/internal/postgres"
 )
 
+var errFakeBegin = errors.New("fake pool does not open transactions")
+
 // fakePool fakes the two pool methods the seed uses; the Scan of the version
 // row is served from the struct fields.
 type fakePool struct {
@@ -40,7 +42,7 @@ func (f *fakePool) Scan(dest ...any) error {
 func (f *fakePool) Begin(_ context.Context) (pgx.Tx, error) {
 	f.beginCalled = true
 
-	return nil, errors.New("fake pool does not open transactions")
+	return nil, errFakeBegin
 }
 
 func validOptions() Options {

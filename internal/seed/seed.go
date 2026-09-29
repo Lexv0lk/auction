@@ -148,7 +148,7 @@ type demoUser struct {
 const (
 	selectUserByLoginSQL = "SELECT role FROM users WHERE login = $1"
 	insertUserSQL        = "INSERT INTO users (login, password_hash, role) VALUES ($1, $2, $3)"
-	selectCategoryIdSQL  = "SELECT id FROM categories WHERE lower(name) = lower($1)"
+	selectCategoryIDSQL  = "SELECT id FROM categories WHERE lower(name) = lower($1)"
 	insertCategorySQL    = "INSERT INTO categories (name) VALUES ($1) RETURNING id"
 	selectLotByKeySQL    = "SELECT id FROM lots WHERE lower(title) = lower($1) AND category_id = $2"
 	insertLotSQL         = "INSERT INTO lots (title, description, category_id, start_price, status, ends_at)" +
@@ -284,7 +284,7 @@ func seedCategories(ctx context.Context, tx pgx.Tx, summary *Summary) (map[strin
 	categoryIDs := make(map[string]int64, len(demoCategories))
 	for _, name := range demoCategories {
 		var id int64
-		err := tx.QueryRow(ctx, selectCategoryIdSQL, name).Scan(&id)
+		err := tx.QueryRow(ctx, selectCategoryIDSQL, name).Scan(&id)
 		if err == nil {
 			categoryIDs[name] = id
 			summary.CategoriesSkipped++

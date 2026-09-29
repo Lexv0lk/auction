@@ -15,7 +15,7 @@ import (
 
 func TestLivezAndRequestLog(t *testing.T) {
 	var logs bytes.Buffer
-	h, err := NewHandler(slog.New(slog.NewJSONHandler(&logs, nil)))
+	h, err := NewHandler(slog.New(slog.NewJSONHandler(&logs, nil)), &fakeAuthenticator{}, testConfig())
 	require.NoError(t, err)
 	r := httptest.NewRecorder()
 	h.ServeHTTP(r, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/livez", nil))
@@ -30,7 +30,7 @@ func TestLivezAndRequestLog(t *testing.T) {
 }
 
 func TestAPIErrorShape(t *testing.T) {
-	h, err := NewHandler(slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)))
+	h, err := NewHandler(discardLogger(), &fakeAuthenticator{}, testConfig())
 	require.NoError(t, err)
 	r := httptest.NewRecorder()
 	h.ServeHTTP(r, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/missing", nil))
@@ -44,7 +44,10 @@ func TestAPIErrorShape(t *testing.T) {
 
 func TestPanicBecomesInternalError(t *testing.T) {
 	var logs bytes.Buffer
-	h := &Handler{logger: slog.New(slog.NewJSONHandler(&logs, nil))}
+	h := &Handler{
+		logger: slog.New(slog.NewJSONHandler(&logs, nil)),
+		pages:  mustParsePages(t),
+	}
 	wrapped := h.enrichWithID(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("sensitive value") }))
 	r := httptest.NewRecorder()
 	wrapped.ServeHTTP(r, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/test", nil))

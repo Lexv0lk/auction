@@ -1,2 +1,6 @@
 body { font: 1rem/1.5 system-ui, sans-serif; max-width: 48rem; margin: 3rem auto; padding: 0 1rem; color: #20242a; }
 small { color: #626b76; }
+.site-nav { display: flex; align-items: center; gap: 1rem; border-bottom: 1px solid #d8dde3; padding-bottom: 0.75rem; }
+.site-nav .who { margin-left: auto; }
+.site-nav .inline { display: inline; }
+.error { border: 1px solid #c0392b; background: #fdf0ee; color: #7c2d1f; padding: 0.5rem 0.75rem; border-radius: 4px; }

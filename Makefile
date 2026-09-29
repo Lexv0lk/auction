@@ -87,19 +87,21 @@ vet:
 test-race:
 	$(GO) test -race ./...
 
+# Integration packages share one test database, so -p 1 keeps the packages
+# (each of which resets the data) from interfering with each other.
 test-integration:
 	docker compose up -d --wait db-test
 	docker compose run --rm migrate-test
-	$(GO) test -tags=integration ./...
+	$(GO) test -p 1 -tags=integration ./...
 
 test-integration-race:
 	docker compose up -d --wait db-test
 	docker compose run --rm migrate-test
-	$(GO) test -race -tags=integration ./...
+	$(GO) test -p 1 -race -tags=integration ./...
 
 test-integration-repeat:
 	docker compose up -d --wait db-test
 	docker compose run --rm migrate-test
-	$(GO) test -tags=integration -count=10 ./...
+	$(GO) test -p 1 -tags=integration -count=10 ./...
 
 check: go-version build fmt-check lint vet test

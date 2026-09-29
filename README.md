@@ -6,7 +6,7 @@ inside the server finishes auctions and records the result. Built as a single
 Go 1.27 binary on `net/http` with PostgreSQL.
 
 Development status and the implementation plan live in `realisation_steps/`
-(steps 01-04 are done); design documents live in `docs/`. Both directories are
+(steps 01-05 are done); design documents live in `docs/`. Both directories are
 kept locally and are not committed.
 
 ## Quick start
@@ -16,6 +16,8 @@ Requirements: Go 1.27.1, Docker with Compose, GNU make, golangci-lint 2.14.0
 
 1. Copy `.env.example` to `.env` and review the values. Local port overrides
    (`POSTGRES_PORT`, `TEST_POSTGRES_PORT`) and all passwords live there.
+   `CSRF_SECRET` must be an independently generated value of at least 32
+   characters (for example `python -c "import secrets; print(secrets.token_urlsafe(48))"`).
 2. `make migrate` — apply the SQL migrations to the `db` compose service.
 3. `make seed` — fill the database with the demo data set (see below).
 4. `make run` — start the web server on `HTTP_ADDR`; `GET /livez` returns 200.
@@ -23,6 +25,17 @@ Requirements: Go 1.27.1, Docker with Compose, GNU make, golangci-lint 2.14.0
 `make check` runs the full verification: build, formatting, linter, vet and
 tests; `make test-integration` additionally runs the integration-tagged tests
 against a real PostgreSQL (`db-test`).
+
+## Logging in
+
+Open `http://<HTTP_ADDR>/login` and sign in with a demo account, for example
+`demo-admin` with the `SEED_ADMIN_PASSWORD` value from `.env`. The session
+lives in PostgreSQL (`SESSION_TTL`), so the login survives a server restart;
+`POST /logout` in the page navigation ends it. Passwords are verified against
+the bcrypt hashes created by the seed; the browser receives only an opaque
+random token in an `HttpOnly` cookie, while the database stores its SHA-256
+hash. Changing requests (login, logout, and later all forms) are protected by
+CSRF tokens signed with the shared `CSRF_SECRET`.
 
 ## Demo accounts and demo data
 

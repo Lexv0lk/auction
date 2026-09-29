@@ -1,0 +1,11 @@
+{{define "content"}}
+<h1>Вход</h1>
+<form method="post" action="/login">
+  {{.CSRFToken}}
+  <p><label for="login">Логин</label><br>
+  <input type="text" id="login" name="login" value="{{.Login}}" maxlength="64" required autofocus></p>
+  <p><label for="password">Пароль</label><br>
+  <input type="password" id="password" name="password" maxlength="72" required></p>
+  <button type="submit">Войти</button>
+</form>
+{{end}}
