@@ -99,7 +99,7 @@ func TestCatalogFlowAgainstPostgreSQL(t *testing.T) {
 	})
 	insertBid(t, ctx, pool, maxPriceLot, participantID, math.MaxInt64, 50)
 
-	handler, err := NewHandler(discardLogger(), auth.NewService(pool), category.NewService(pool), lotService, testConfig())
+	handler, err := NewHandler(discardLogger(), auth.NewService(pool), category.NewService(pool), lotService, nil, testConfig())
 	require.NoError(t, err)
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)

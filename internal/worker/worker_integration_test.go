@@ -126,7 +126,7 @@ func waitFinished(t *testing.T, ctx context.Context, pool *pgxpool.Pool, lotID i
 func TestFinishLotRecordsMaxAcceptedBid(t *testing.T) {
 	pool := testutil.Pool(t)
 	ctx := testCtx(t)
-	w := New(pool, discardLogger())
+	w := New(pool, discardLogger(), nil)
 	categoryID := createWorkerCategory(t, ctx, pool, "Нумизматика worker")
 	firstBidder := createWorkerUser(t, ctx, pool, "worker-bidder-1")
 	secondBidder := createWorkerUser(t, ctx, pool, "worker-bidder-2")
@@ -156,7 +156,7 @@ func TestFinishLotRecordsMaxAcceptedBid(t *testing.T) {
 func TestFinishLotStoresNullWinnerWithoutBids(t *testing.T) {
 	pool := testutil.Pool(t)
 	ctx := testCtx(t)
-	w := New(pool, discardLogger())
+	w := New(pool, discardLogger(), nil)
 	categoryID := createWorkerCategory(t, ctx, pool, "Филателия worker")
 	endsAt := time.Now().Add(-time.Minute)
 	lotID := createWorkerLot(t, ctx, pool, categoryID, lot.StatusActive, 100, endsAt)
@@ -177,7 +177,7 @@ func TestFinishLotStoresNullWinnerWithoutBids(t *testing.T) {
 func TestFinishLotLeavesNonDueLotsUntouched(t *testing.T) {
 	pool := testutil.Pool(t)
 	ctx := testCtx(t)
-	w := New(pool, discardLogger())
+	w := New(pool, discardLogger(), nil)
 	categoryID := createWorkerCategory(t, ctx, pool, "Антикварные книги worker")
 
 	futureID := createWorkerLot(t, ctx, pool, categoryID, lot.StatusActive, 100, time.Now().Add(time.Hour))
@@ -203,7 +203,7 @@ func TestFinishLotLeavesNonDueLotsUntouched(t *testing.T) {
 func TestPassFinishesExactlyDueLots(t *testing.T) {
 	pool := testutil.Pool(t)
 	ctx := testCtx(t)
-	w := New(pool, discardLogger())
+	w := New(pool, discardLogger(), nil)
 	categoryID := createWorkerCategory(t, ctx, pool, "Живопись worker")
 
 	overdueFirst := createWorkerLot(t, ctx, pool, categoryID, lot.StatusActive, 100, time.Now().Add(-2*time.Minute))
@@ -223,7 +223,7 @@ func TestPassFinishesExactlyDueLots(t *testing.T) {
 func TestPassRespectsBatchSize(t *testing.T) {
 	pool := testutil.Pool(t)
 	ctx := testCtx(t)
-	w := New(pool, discardLogger())
+	w := New(pool, discardLogger(), nil)
 	categoryID := createWorkerCategory(t, ctx, pool, "Нумизматика worker")
 
 	var due []int64
@@ -256,7 +256,7 @@ func TestRunCatchesUpAfterRestart(t *testing.T) {
 
 	runCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
-	w := New(pool, discardLogger())
+	w := New(pool, discardLogger(), nil)
 	require.NoError(t, w.Run(runCtx, config.Worker{PollInterval: 10 * time.Millisecond, BatchSize: 10}))
 
 	for _, lotID := range accumulated {
@@ -290,7 +290,7 @@ func TestConcurrentPassesFinishEachLotOnce(t *testing.T) {
 	errs := make([]error, replicas)
 	wg.Add(replicas)
 	for i := 0; i < replicas; i++ {
-		w := New(pool, discardLogger())
+		w := New(pool, discardLogger(), nil)
 		go func(index int) {
 			defer wg.Done()
 			<-start
@@ -317,7 +317,7 @@ func TestConcurrentPassesFinishEachLotOnce(t *testing.T) {
 func TestLockedLotDoesNotBlockOtherLots(t *testing.T) {
 	pool := testutil.Pool(t)
 	ctx := testCtx(t)
-	w := New(pool, discardLogger())
+	w := New(pool, discardLogger(), nil)
 	categoryID := createWorkerCategory(t, ctx, pool, "Живопись worker")
 	bidder := createWorkerUser(t, ctx, pool, "worker-lock-bidder")
 
@@ -355,7 +355,7 @@ func TestLockedLotDoesNotBlockOtherLots(t *testing.T) {
 func TestBidAndWorkerResolveInBothOrders(t *testing.T) {
 	pool := testutil.Pool(t)
 	ctx := testCtx(t)
-	w := New(pool, discardLogger())
+	w := New(pool, discardLogger(), nil)
 	categoryID := createWorkerCategory(t, ctx, pool, "Нумизматика worker")
 	bidder := createWorkerUser(t, ctx, pool, "worker-order-bidder")
 	service := lot.NewService(pool)
@@ -422,7 +422,7 @@ func TestBidAndWorkerResolveInBothOrders(t *testing.T) {
 func TestFinishedLotIsNeverReprocessed(t *testing.T) {
 	pool := testutil.Pool(t)
 	ctx := testCtx(t)
-	w := New(pool, discardLogger())
+	w := New(pool, discardLogger(), nil)
 	categoryID := createWorkerCategory(t, ctx, pool, "Филателия worker")
 	bidder := createWorkerUser(t, ctx, pool, "worker-repeat-bidder")
 	lotID := createWorkerLot(t, ctx, pool, categoryID, lot.StatusActive, 100, time.Now().Add(-time.Minute))
@@ -447,7 +447,7 @@ func TestFinishedLotIsNeverReprocessed(t *testing.T) {
 func TestPassWithNoDueLotsIsSuccess(t *testing.T) {
 	pool := testutil.Pool(t)
 	ctx := testCtx(t)
-	w := New(pool, discardLogger())
+	w := New(pool, discardLogger(), nil)
 
 	finished, err := w.pass(ctx, 10)
 	require.NoError(t, err, "an empty set of due lots is a normal result")
@@ -457,7 +457,7 @@ func TestPassWithNoDueLotsIsSuccess(t *testing.T) {
 func TestPassReportsDatabaseFailure(t *testing.T) {
 	pool := testutil.Pool(t)
 	ctx := testCtx(t)
-	w := New(pool, discardLogger())
+	w := New(pool, discardLogger(), nil)
 	categoryID := createWorkerCategory(t, ctx, pool, "Живопись worker")
 	createWorkerLot(t, ctx, pool, categoryID, lot.StatusActive, 100, time.Now().Add(-time.Minute))
 

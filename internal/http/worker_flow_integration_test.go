@@ -54,7 +54,7 @@ func TestWorkerCompletesAuctionBehindBarrier(t *testing.T) {
 	categoryID := createCategoryRow(t, ctx, pool, "Нумизматика worker flow")
 	participantID := createFlowBidUser(t, ctx, pool, "flow-worker-participant", auth.RoleParticipant, "integration-pass")
 
-	handler, err := NewHandler(discardLogger(), auth.NewService(pool), category.NewService(pool), lot.NewService(pool), testConfig())
+	handler, err := NewHandler(discardLogger(), auth.NewService(pool), category.NewService(pool), lot.NewService(pool), nil, testConfig())
 	require.NoError(t, err)
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
@@ -64,7 +64,7 @@ func TestWorkerCompletesAuctionBehindBarrier(t *testing.T) {
 	lotID := createFlowLot(t, ctx, pool, categoryID, lot.StatusActive, 100, time.Now().Add(-time.Second))
 
 	gate := make(chan struct{})
-	background := worker.New(&gatedPool{Pool: pool, gate: gate}, discardLogger())
+	background := worker.New(&gatedPool{Pool: pool, gate: gate}, discardLogger(), nil)
 	workerCtx, cancelWorker := context.WithCancel(ctx)
 	t.Cleanup(cancelWorker)
 	go func() {

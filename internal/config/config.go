@@ -32,9 +32,15 @@ type Config struct {
 	HTTP            HTTP
 	Session         Session
 	Worker          Worker
+	Metrics         Metrics
 	LogLevel        slog.Level
 	BidTxTimeout    time.Duration
 	ShutdownTimeout time.Duration
+}
+
+// Metrics configures the observability exporter on the main HTTP address.
+type Metrics struct {
+	Enabled bool
 }
 
 // Database configures the PostgreSQL connection pool and operation deadline.
@@ -130,6 +136,10 @@ func Load() (Config, error) {
 		return c, err
 	}
 	c.Worker.BatchSize, err = getInt("WORKER_BATCH_SIZE", "100")
+	if err != nil {
+		return c, err
+	}
+	c.Metrics.Enabled, err = getBoolean("METRICS_ENABLED", "true")
 	if err != nil {
 		return c, err
 	}

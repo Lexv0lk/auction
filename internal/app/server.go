@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/Lexv0lk/auction/internal/auth"
@@ -15,8 +16,10 @@ import (
 	"github.com/Lexv0lk/auction/internal/config"
 	httpapp "github.com/Lexv0lk/auction/internal/http"
 	"github.com/Lexv0lk/auction/internal/lot"
+	"github.com/Lexv0lk/auction/internal/observability"
 	"github.com/Lexv0lk/auction/internal/postgres"
 	"github.com/Lexv0lk/auction/internal/worker"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // errBackgroundStopped names the unexpected clean stop of the background
@@ -56,11 +59,20 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return err
 	}
 
-	handler, err := httpapp.NewHandler(logger, auth.NewService(pool), category.NewService(pool), lot.NewService(pool), httpapp.Config{
-		SessionTTL:   cfg.Session.TTL,
-		CookieSecure: cfg.Session.CookieSecure,
-		CSRFKey:      httpapp.NewCSRFKey(cfg.Session.CSRFSecret),
-	})
+	// Every component logs with its component name; the same instruments
+	// carry the HTTP, worker and pool signals to the single exporter.
+	metrics := observability.NewMetrics(poolSnapshotFunc(pool))
+	draining := &atomic.Bool{}
+
+	handler, err := httpapp.NewHandler(logger.With("component", "http"), auth.NewService(pool),
+		category.NewService(pool), lot.NewService(pool), metrics, httpapp.Config{
+			SessionTTL:     cfg.Session.TTL,
+			CookieSecure:   cfg.Session.CookieSecure,
+			CSRFKey:        httpapp.NewCSRFKey(cfg.Session.CSRFSecret),
+			MetricsEnabled: cfg.Metrics.Enabled,
+			Readiness:      readinessCheck(pool, cfg.Database.Timeout),
+			Draining:       func() bool { return draining.Load() },
+		})
 	if err != nil {
 		return err
 	}
@@ -79,17 +91,53 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
 	}
 
-	auctionWorker := worker.New(pool, logger)
+	auctionWorker := worker.New(pool, logger.With("component", "worker"), metrics)
 
-	return runLifecycle(ctx, server, listener, logger, cfg.ShutdownTimeout, auctionWorker, cfg.Worker)
+	return runLifecycle(ctx, server, listener, logger, cfg.ShutdownTimeout, auctionWorker, cfg.Worker, func() { draining.Store(true) })
+}
+
+// readinessCheck builds the short /readyz probe: a pool ping plus the schema
+// version verification, bounded by the database operation deadline. The
+// version contract makes a not-yet-migrated or incompatible database answer
+// 503 instead of serving broken pages.
+func readinessCheck(pool *pgxpool.Pool, timeout time.Duration) func(ctx context.Context) error {
+	return func(ctx context.Context) error {
+		probeCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		if err := pool.Ping(probeCtx); err != nil {
+			return fmt.Errorf("database ping: %w", err)
+		}
+
+		return postgres.CheckSchemaVersion(probeCtx, pool)
+	}
+}
+
+// poolSnapshotFunc converts the pgx pool statistics into the driver-free
+// snapshot the metrics package exports.
+func poolSnapshotFunc(pool *pgxpool.Pool) func() observability.PoolSnapshot {
+	return func() observability.PoolSnapshot {
+		stats := pool.Stat()
+
+		return observability.PoolSnapshot{
+			TotalConns:           stats.TotalConns(),
+			AcquiredConns:        stats.AcquiredConns(),
+			IdleConns:            stats.IdleConns(),
+			MaxConns:             stats.MaxConns(),
+			EmptyAcquireCount:    stats.EmptyAcquireCount(),
+			CanceledAcquireCount: stats.CanceledAcquireCount(),
+			EmptyAcquireWaitTime: stats.EmptyAcquireWaitTime(),
+		}
+	}
 }
 
 // runLifecycle drives HTTP and the background loop inside one shutdown
 // budget. The loop watches the same context as the process, so one signal
 // stops taking bids and selecting lots at once; the pool closes only after
 // both components have stopped, and a transaction caught mid-flight rolls
-// back on its own short context, leaving its lot to the next replica.
-func runLifecycle(ctx context.Context, server *http.Server, listener net.Listener, logger *slog.Logger, shutdownTimeout time.Duration, background backgroundLoop, workerCfg config.Worker) error {
+// back on its own short context, leaving its lot to the next replica. The
+// setDraining callback flips the readiness probe as soon as the shutdown
+// starts, so the platform stops sending traffic before the budget expires.
+func runLifecycle(ctx context.Context, server *http.Server, listener net.Listener, logger *slog.Logger, shutdownTimeout time.Duration, background backgroundLoop, workerCfg config.Worker, setDraining func()) error {
 	runCtx, cancelRun := context.WithCancel(ctx)
 	defer cancelRun()
 
@@ -131,8 +179,12 @@ func runLifecycle(ctx context.Context, server *http.Server, listener net.Listene
 	}
 
 	// Nothing new is served or selected from here: the background loop stops
-	// through its context (a no-op when it already stopped).
+	// through its context (a no-op when it already stopped). The web process
+	// reports itself not ready from this moment on.
 	cancelRun()
+	if setDraining != nil {
+		setDraining()
+	}
 
 	// One budget covers the HTTP drain and the background loop together.
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)

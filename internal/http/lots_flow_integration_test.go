@@ -89,7 +89,7 @@ func TestLotsAdminFlowAgainstPostgreSQL(t *testing.T) {
 	_, err = pool.Exec(ctx, "INSERT INTO users (login, password_hash, role) VALUES ('flow-lot-participant', $1, 'participant')", hash)
 	require.NoError(t, err)
 
-	handler, err := NewHandler(discardLogger(), auth.NewService(pool), category.NewService(pool), lot.NewService(pool), testConfig())
+	handler, err := NewHandler(discardLogger(), auth.NewService(pool), category.NewService(pool), lot.NewService(pool), nil, testConfig())
 	require.NoError(t, err)
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)

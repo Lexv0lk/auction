@@ -38,7 +38,7 @@ func TestLoginFlowAgainstPostgreSQL(t *testing.T) {
 		"INSERT INTO users (login, password_hash, role) VALUES ('flow-admin', $1, 'admin') RETURNING id",
 		hash).Scan(&userID))
 
-	handler, err := NewHandler(discardLogger(), auth.NewService(pool), category.NewService(pool), lot.NewService(pool), testConfig())
+	handler, err := NewHandler(discardLogger(), auth.NewService(pool), category.NewService(pool), lot.NewService(pool), nil, testConfig())
 	require.NoError(t, err)
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)

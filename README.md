@@ -6,7 +6,7 @@ inside the server finishes auctions and records the result. Built as a single
 Go 1.27 binary on `net/http` with PostgreSQL.
 
 Development status and the implementation plan live in `realisation_steps/`
-(steps 01-11 are done); design documents live in `docs/`. Both directories are
+(steps 01-12 are done); design documents live in `docs/`. Both directories are
 kept locally and are not committed.
 
 ## Quick start
@@ -20,7 +20,8 @@ Requirements: Go 1.27.1, Docker with Compose, GNU make, golangci-lint 2.14.0
    characters (for example `python -c "import secrets; print(secrets.token_urlsafe(48))"`).
 2. `make migrate` — apply the SQL migrations to the `db` compose service.
 3. `make seed` — fill the database with the demo data set (see below).
-4. `make run` — start the web server on `HTTP_ADDR`; `GET /livez` returns 200.
+4. `make run` — start the web server on `HTTP_ADDR`; `GET /livez` and
+   `GET /readyz` return 200, `GET /metrics` exports Prometheus metrics.
 
 `make check` runs the full verification: build, formatting, linter, vet and
 tests; `make test-integration` additionally runs the integration-tagged tests
@@ -122,6 +123,24 @@ values travel as decimal strings. On a network failure the page says the
 shown data may be stale and resumes refreshing on its own after the
 connection returns. Without JavaScript the page is fully readable — every
 value is server-rendered.
+
+## Health checks, metrics and logs
+
+The single `server` process serves its probes and the metrics exporter on the
+same `HTTP_ADDR` as the application, without a session: `GET /livez` proves
+the process answers HTTP (no database work), `GET /readyz` runs a short
+database check (pool ping plus the supported schema version) and answers
+`503` while the database is unreachable, the schema version differs, or the
+graceful shutdown has started — it returns to `200` on its own once the
+database is back. `GET /metrics` exports Prometheus metrics (`auction_*`
+prefix for HTTP requests, bid outcomes, auction completions, the worker
+progress and the connection pool, plus the standard `go_*`/`process_*`
+metrics); the environment keeps the exporter off with `METRICS_ENABLED=false`
+and restricts access by binding `HTTP_ADDR`. See `docs/observability.md`
+(local working notes, not part of the repository) for the metric meanings and
+the log format; logs are JSON events on stdout with a `component` field
+(`http` or `worker`), request IDs, operation names, outcomes and durations,
+and passwords never reach them even in driver errors.
 
 ## Demo accounts and demo data
 

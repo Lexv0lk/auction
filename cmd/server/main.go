@@ -20,7 +20,9 @@ var errPositionalArguments = errors.New("server takes no positional arguments; u
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		// The startup diagnostics may quote configuration values (for example
+		// a failed connection string); passwords never reach the console.
+		fmt.Fprintln(os.Stderr, observability.RedactSecrets(err.Error()))
 		os.Exit(1)
 	}
 }

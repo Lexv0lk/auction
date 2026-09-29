@@ -282,15 +282,18 @@ func newTestHandler(t *testing.T, authenticator Authenticator, config Config, de
 
 	var categories Categories = &fakeCategories{}
 	var lots Lots = &fakeLots{}
+	var metrics Metrics
 	for _, dep := range deps {
 		switch dep := dep.(type) {
 		case Categories:
 			categories = dep
 		case Lots:
 			lots = dep
+		case Metrics:
+			metrics = dep
 		}
 	}
-	handler, err := NewHandler(discardLogger(), authenticator, categories, lots, config)
+	handler, err := NewHandler(discardLogger(), authenticator, categories, lots, metrics, config)
 	require.NoError(t, err)
 
 	return handler

@@ -16,8 +16,10 @@ type errorResponse struct {
 
 // Error renders the shared error answer: a JSON body for API routes and the
 // layout error page for HTML routes. Technical causes (SQL errors, secrets,
-// tokens) never reach the message; the request ID ties the answer to the log.
+// tokens) never reach the message; the request ID ties the answer to the log,
+// and the error code reaches the request log of the same request.
 func (h *Handler) Error(w http.ResponseWriter, r *http.Request, status int, code, message string) {
+	routeStateFrom(r.Context()).setErrorCode(code)
 	requestID, _ := TryGetRequestID(r.Context())
 
 	if strings.HasPrefix(r.URL.Path, "/api/") {

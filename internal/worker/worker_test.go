@@ -25,7 +25,7 @@ var (
 )
 
 func testWorker(pool Pool) *Worker {
-	return New(pool, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	return New(pool, slog.New(slog.NewJSONHandler(io.Discard, nil)), nil)
 }
 
 func discardCtx(t *testing.T) context.Context {

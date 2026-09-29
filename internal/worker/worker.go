@@ -61,11 +61,21 @@ type Pool interface {
 	BeginTx(ctx context.Context, options pgx.TxOptions) (pgx.Tx, error)
 }
 
+// Metrics is the observability contract of the worker: the application
+// supplies the shared Prometheus instruments, a nil value disables recording.
+// The completion counter belongs after the commit and the success gauge is
+// advanced by successful passes only (an empty pass included).
+type Metrics interface {
+	AuctionFinished(withWinner bool, delay time.Duration)
+	WorkerPassSucceeded(at time.Time)
+}
+
 // Worker finishes due auctions over the shared pool. The atomics carry the
 // observability signals; the database carries everything else.
 type Worker struct {
-	pool   Pool
-	logger *slog.Logger
+	pool    Pool
+	logger  *slog.Logger
+	metrics Metrics
 
 	finishedLots atomic.Int64 // completions counted after their commit
 	passes       atomic.Int64 // successful passes, including passes without work
@@ -82,8 +92,8 @@ type Snapshot struct {
 }
 
 // New builds the worker on top of the shared connection pool.
-func New(pool Pool, logger *slog.Logger) *Worker {
-	return &Worker{pool: pool, logger: logger}
+func New(pool Pool, logger *slog.Logger, metrics Metrics) *Worker {
+	return &Worker{pool: pool, logger: logger, metrics: metrics}
 }
 
 // Stats reports the observability signals of the worker so far.
@@ -130,12 +140,18 @@ func (w *Worker) Run(ctx context.Context, cfg config.Worker) error {
 		}
 		if err == nil {
 			w.passes.Add(1)
-			w.lastSuccess.Store(time.Now().UnixNano())
+			now := time.Now()
+			w.lastSuccess.Store(now.UnixNano())
+			if w.metrics != nil {
+				w.metrics.WorkerPassSucceeded(now)
+			}
 			w.logger.Info("worker pass completed",
+				"operation", "worker_pass", "outcome", "ok",
 				"finished_lots", completions,
-				"duration", time.Since(started).String())
+				"duration", time.Since(started).Milliseconds())
 		} else {
 			w.logger.Error("worker pass failed",
+				"operation", "worker_pass", "outcome", "error",
 				"error", err.Error(),
 				"finished_lots", completions)
 		}
@@ -243,13 +259,17 @@ func (w *Worker) finishLot(ctx context.Context) (finishedLot, bool, error) {
 // completion is counted only after its commit confirmed the result.
 func (w *Worker) recordCompletion(outcome finishedLot) {
 	w.finishedLots.Add(1)
+	if w.metrics != nil {
+		w.metrics.AuctionFinished(outcome.WinningBidID != nil, outcome.Delay())
+	}
 	var winningBid any
 	if outcome.WinningBidID != nil {
 		winningBid = *outcome.WinningBidID
 	}
 	w.logger.Info("lot finished",
+		"operation", "finish_lot", "outcome", "finished",
 		"lot_id", outcome.LotID,
 		"winning_bid_id", winningBid,
 		"winning_amount", outcome.WinningAmount,
-		"completion_delay", outcome.Delay().String())
+		"completion_delay", outcome.Delay().Milliseconds())
 }

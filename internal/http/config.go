@@ -3,6 +3,7 @@ package httpapp
 import (
 	"context"
 	"crypto/sha256"
+	"net/http"
 	"time"
 
 	"github.com/Lexv0lk/auction/internal/auth"
@@ -18,6 +19,28 @@ type Config struct {
 	SessionTTL   time.Duration
 	CookieSecure bool
 	CSRFKey      []byte
+
+	// MetricsEnabled gates the /metrics exporter; the environment decides
+	// whether the process exposes it (METRICS_ENABLED).
+	MetricsEnabled bool
+
+	// Readiness performs the short database check behind /readyz: a pool
+	// ping plus the schema version verification. The process is ready only
+	// while it answers nil.
+	Readiness func(ctx context.Context) error
+
+	// Draining reports that the shutdown has started: a draining process
+	// answers /readyz with 503 without touching the database.
+	Draining func() bool
+}
+
+// Metrics is the observability contract of the HTTP layer: the exporter
+// handler for /metrics and the instruments of the request and bid paths.
+type Metrics interface {
+	Handler() http.Handler
+	ObserveHTTPRequest(method, route string, status int, duration time.Duration)
+	CountBidAttempt(outcome, reason string)
+	ObserveBidTransaction(duration time.Duration)
 }
 
 // Authenticator is the session-service contract the HTTP layer depends on.

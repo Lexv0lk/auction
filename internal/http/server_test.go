@@ -10,12 +10,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/Lexv0lk/auction/internal/observability"
 	"github.com/stretchr/testify/require"
 )
 
 func TestLivezAndRequestLog(t *testing.T) {
 	var logs bytes.Buffer
-	h, err := NewHandler(slog.New(slog.NewJSONHandler(&logs, nil)), &fakeAuthenticator{}, &fakeCategories{}, &fakeLots{}, testConfig())
+	h, err := NewHandler(slog.New(slog.NewJSONHandler(&logs, nil)), &fakeAuthenticator{}, &fakeCategories{}, &fakeLots{}, nil, testConfig())
 	require.NoError(t, err)
 	r := httptest.NewRecorder()
 	h.ServeHTTP(r, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/livez", nil))
@@ -30,7 +32,7 @@ func TestLivezAndRequestLog(t *testing.T) {
 }
 
 func TestAPIErrorShape(t *testing.T) {
-	h, err := NewHandler(discardLogger(), &fakeAuthenticator{}, &fakeCategories{}, &fakeLots{}, testConfig())
+	h, err := NewHandler(discardLogger(), &fakeAuthenticator{}, &fakeCategories{}, &fakeLots{}, nil, testConfig())
 	require.NoError(t, err)
 	r := httptest.NewRecorder()
 	h.ServeHTTP(r, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/missing", nil))
@@ -45,8 +47,9 @@ func TestAPIErrorShape(t *testing.T) {
 func TestPanicBecomesInternalError(t *testing.T) {
 	var logs bytes.Buffer
 	h := &Handler{
-		logger: slog.New(slog.NewJSONHandler(&logs, nil)),
-		pages:  mustParsePages(t),
+		logger:  slog.New(slog.NewJSONHandler(&logs, nil)),
+		pages:   mustParsePages(t),
+		metrics: observability.NewMetrics(nil),
 	}
 	wrapped := h.enrichWithID(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("sensitive value") }))
 	r := httptest.NewRecorder()

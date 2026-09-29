@@ -89,7 +89,7 @@ func TestBidFlowAgainstPostgreSQL(t *testing.T) {
 	participantID := createFlowBidUser(t, ctx, pool, "flow-bid-participant", auth.RoleParticipant, "integration-pass")
 	createFlowBidUser(t, ctx, pool, "flow-bid-admin", auth.RoleAdmin, "integration-pass")
 
-	handler, err := NewHandler(discardLogger(), auth.NewService(pool), category.NewService(pool), lot.NewService(pool), testConfig())
+	handler, err := NewHandler(discardLogger(), auth.NewService(pool), category.NewService(pool), lot.NewService(pool), nil, testConfig())
 	require.NoError(t, err)
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)

@@ -100,7 +100,7 @@ func TestShutdown(t *testing.T) {
 			}
 			result := make(chan error, 1)
 			go func() {
-				result <- runLifecycle(ctx, server, listener, testLogger(), deadline, stubContextLoop(), config.Worker{})
+				result <- runLifecycle(ctx, server, listener, testLogger(), deadline, stubContextLoop(), config.Worker{}, nil)
 			}()
 			request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+addr, nil)
 			require.NoError(t, err)
@@ -174,7 +174,7 @@ func TestFatalBackgroundErrorStopsHTTP(t *testing.T) {
 	result := make(chan error, 1)
 	go func() {
 		result <- runLifecycle(ctx, server, listener, testLogger(), 3*time.Second,
-			stubLoop{behavior: func(context.Context) error { return errBackgroundFailure }}, config.Worker{})
+			stubLoop{behavior: func(context.Context) error { return errBackgroundFailure }}, config.Worker{}, nil)
 	}()
 
 	select {
@@ -202,7 +202,7 @@ func TestBackgroundPanicStopsHTTP(t *testing.T) {
 	result := make(chan error, 1)
 	go func() {
 		result <- runLifecycle(ctx, server, listener, testLogger(), 3*time.Second,
-			stubLoop{behavior: func(context.Context) error { panic("broken loop") }}, config.Worker{})
+			stubLoop{behavior: func(context.Context) error { panic("broken loop") }}, config.Worker{}, nil)
 	}()
 
 	select {
@@ -238,7 +238,7 @@ func TestHTTPFailureStopsBackgroundLoop(t *testing.T) {
 
 	result := make(chan error, 1)
 	go func() {
-		result <- runLifecycle(ctx, server, listener, testLogger(), 3*time.Second, loop, config.Worker{})
+		result <- runLifecycle(ctx, server, listener, testLogger(), 3*time.Second, loop, config.Worker{}, nil)
 	}()
 
 	select {
@@ -258,4 +258,30 @@ func TestHTTPFailureStopsBackgroundLoop(t *testing.T) {
 	rebound, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", addr)
 	require.NoError(t, err, "the HTTP failure must release the port")
 	_ = rebound.Close()
+}
+
+func TestShutdownMarksProcessNotReady(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	server := &http.Server{ReadHeaderTimeout: time.Second, Handler: http.NotFoundHandler()}
+	t.Cleanup(func() { _ = server.Close() })
+
+	drainingCalls := 0
+	result := make(chan error, 1)
+	go func() {
+		result <- runLifecycle(ctx, server, listener, testLogger(), 3*time.Second,
+			stubContextLoop(), config.Worker{}, func() { drainingCalls++ })
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-result:
+		require.NoError(t, err)
+		assert.Equal(t, 1, drainingCalls, "the readiness probe flips exactly once, when the shutdown starts")
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "the application did not stop after the cancellation")
+	}
 }
