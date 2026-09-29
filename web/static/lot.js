@@ -1,11 +1,13 @@
 // Periodic state refresh of the lot page and the bid submission. The
 // server-rendered page stays the baseline: the script replaces text content,
 // never builds money values through Number, and shows an explicit staleness
-// note while the refresh is failing. Requests never overlap: a slow answer
-// skips its tick. The bid intention (amount + request key) lives in the tab
-// storage — never a password or a session token — so a reload or a retry
-// after a lost answer repeats the same request, which the server answers
-// idempotently.
+// note while the refresh is failing. When the poller learns that the worker
+// has finished the auction, it reloads the page once so the server renders
+// the recorded result — the winner is never assembled in the browser.
+// Requests never overlap: a slow answer skips its tick. The bid intention
+// (amount + request key) lives in the tab storage — never a password or a
+// session token — so a reload or a retry after a lost answer repeats the
+// same request, which the server answers idempotently.
 (function () {
   'use strict';
 
@@ -91,6 +93,14 @@
   function applyState(data) {
     if (stateLabel) {
       stateLabel.textContent = displayLabels[data.display_status] || data.display_status;
+    }
+    // The recorded result exists only on the server: when the worker has
+    // finished the auction and this page still predates the result block, a
+    // single reload brings the server-rendered winner in. The page returned
+    // by the reload carries #lot-result, so the condition fires at most once.
+    if (data.display_status === 'finished' && !document.getElementById('lot-result')) {
+      window.location.reload();
+      return;
     }
     // Money values arrive as decimal strings and stay strings: textContent
     // never converts them through Number. The bid intention (the input value

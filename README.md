@@ -6,7 +6,7 @@ inside the server finishes auctions and records the result. Built as a single
 Go 1.27 binary on `net/http` with PostgreSQL.
 
 Development status and the implementation plan live in `realisation_steps/`
-(steps 01-08 are done); design documents live in `docs/`. Both directories are
+(steps 01-11 are done); design documents live in `docs/`. Both directories are
 kept locally and are not committed.
 
 ## Quick start
@@ -91,21 +91,37 @@ deadline has passed while the result is being determined, then finished lots.
 Filters (`category`, `state`) and pagination (`page`, 20 lots per page)
 survive in the address, and unknown filter values fall back to "no filter".
 
-The lot page `/lots/{id}` shows the full conditions, the state, the bid
-history (10 per page) and the result of a finished auction: the stored
-winning bid with its participant, or "no winner" for a finished lot without
-bids. An active lot whose deadline has passed shows «Торги завершены,
-определяется результат» and no bid form — the final result is decided by the
-background worker. The bid form placeholder is disabled until the bid steps
-are implemented.
+The lot page `/lots/{id}` shows the full conditions, the state, the bid form
+for participants on a running auction, the bid history (10 per page) and the
+result of a finished auction: the stored winning bid with its participant, or
+"no winner" for a finished lot without bids. An active lot whose deadline has
+passed shows «Торги завершены, определяется результат» and no bid form — a
+bid after the deadline is refused (`auction_closed`) even while the result is
+not recorded yet.
+
+Every server process runs the auction-completion loop next to its HTTP
+handler (no separate worker binary): each pass takes the overdue lots one by
+one — `FOR UPDATE SKIP LOCKED` over the lot rows — and finishes each in its
+own short transaction, storing `status = finished`, `finished_at` by the
+PostgreSQL clock and the maximal accepted bid as the winner (NULL for a lot
+without bids). Concurrent replicas skip lots locked by each other and pick
+them up on a later pass, so every lot gets exactly one recorded result no
+matter how many instances run or restart. The loop makes its first pass
+immediately at startup and repeats every `WORKER_POLL_INTERVAL`, at most
+`WORKER_BATCH_SIZE` lots per pass; a temporary database failure is logged and
+the pass retries after the same pause, and the interval also bounds the
+shutdown of both the HTTP handler and the loop.
 
 The page keeps itself fresh: a small script polls `GET /api/lots/{id}` every
 few seconds and updates the state, the current price, the minimum next bid
-and the countdown without reloading. The countdown and every displayed state
-are computed from the database clock, and money values travel as decimal
-strings. On a network failure the page says the shown data may be stale and
-resumes refreshing on its own after the connection returns. Without
-JavaScript the page is fully readable — every value is server-rendered.
+and the countdown without reloading. When the poller learns that the auction
+has been finished, it reloads the page once so the server renders the
+recorded result — the winner is never assembled in the browser. The countdown
+and every displayed state are computed from the database clock, and money
+values travel as decimal strings. On a network failure the page says the
+shown data may be stale and resumes refreshing on its own after the
+connection returns. Without JavaScript the page is fully readable — every
+value is server-rendered.
 
 ## Demo accounts and demo data
 

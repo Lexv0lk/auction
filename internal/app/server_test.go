@@ -18,6 +18,30 @@ import (
 
 var errIncompleteResponse = errors.New("incomplete response")
 
+var errBackgroundFailure = errors.New("background loop failure")
+
+// stubLoop stands in for the auction worker: it blocks until the context is
+// done, fails, or panics, depending on what the test needs to observe.
+type stubLoop struct {
+	behavior func(ctx context.Context) error
+}
+
+func (s stubLoop) Run(ctx context.Context, _ config.Worker) error {
+	return s.behavior(ctx)
+}
+
+func stubContextLoop() stubLoop {
+	return stubLoop{behavior: func(ctx context.Context) error {
+		<-ctx.Done()
+
+		return nil
+	}}
+}
+
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewJSONHandler(io.Discard, nil))
+}
+
 func TestRunChecksDatabaseBeforeServing(t *testing.T) {
 	cfg := config.Config{
 		Database: config.Database{
@@ -33,7 +57,7 @@ func TestRunChecksDatabaseBeforeServing(t *testing.T) {
 
 	started := time.Now()
 	result := make(chan error, 1)
-	go func() { result <- Run(ctx, cfg, slog.New(slog.NewJSONHandler(io.Discard, nil))) }()
+	go func() { result <- Run(ctx, cfg, testLogger()) }()
 
 	select {
 	case err := <-result:
@@ -76,7 +100,7 @@ func TestShutdown(t *testing.T) {
 			}
 			result := make(chan error, 1)
 			go func() {
-				result <- serve(ctx, server, listener, slog.New(slog.NewJSONHandler(io.Discard, nil)), deadline)
+				result <- runLifecycle(ctx, server, listener, testLogger(), deadline, stubContextLoop(), config.Worker{})
 			}()
 			request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+addr, nil)
 			require.NoError(t, err)
@@ -136,4 +160,102 @@ func TestShutdown(t *testing.T) {
 			_ = rebound.Close()
 		})
 	}
+}
+
+func TestFatalBackgroundErrorStopsHTTP(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := listener.Addr().String()
+	server := &http.Server{ReadHeaderTimeout: time.Second, Handler: http.NotFoundHandler()}
+	t.Cleanup(func() { _ = server.Close() })
+
+	result := make(chan error, 1)
+	go func() {
+		result <- runLifecycle(ctx, server, listener, testLogger(), 3*time.Second,
+			stubLoop{behavior: func(context.Context) error { return errBackgroundFailure }}, config.Worker{})
+	}()
+
+	select {
+	case err := <-result:
+		require.Error(t, err, "a background loop that stopped first is a fatal application error")
+		assert.ErrorIs(t, err, errBackgroundFailure)
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "the application did not stop after the background failure")
+	}
+
+	rebound, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", addr)
+	require.NoError(t, err, "the fatal background error must release the HTTP port")
+	_ = rebound.Close()
+}
+
+func TestBackgroundPanicStopsHTTP(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := listener.Addr().String()
+	server := &http.Server{ReadHeaderTimeout: time.Second, Handler: http.NotFoundHandler()}
+	t.Cleanup(func() { _ = server.Close() })
+
+	result := make(chan error, 1)
+	go func() {
+		result <- runLifecycle(ctx, server, listener, testLogger(), 3*time.Second,
+			stubLoop{behavior: func(context.Context) error { panic("broken loop") }}, config.Worker{})
+	}()
+
+	select {
+	case err := <-result:
+		require.Error(t, err, "a panicking background goroutine must stop the application")
+		assert.ErrorContains(t, err, "panicked")
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "the application did not stop after the background panic")
+	}
+
+	rebound, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", addr)
+	require.NoError(t, err, "the panic must release the HTTP port")
+	_ = rebound.Close()
+}
+
+func TestHTTPFailureStopsBackgroundLoop(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := listener.Addr().String()
+	require.NoError(t, listener.Close(), "the test closes the listener to break Serve")
+	server := &http.Server{ReadHeaderTimeout: time.Second, Handler: http.NotFoundHandler()}
+	t.Cleanup(func() { _ = server.Close() })
+
+	stopped := make(chan struct{})
+	loop := stubLoop{behavior: func(ctx context.Context) error {
+		<-ctx.Done()
+		close(stopped)
+
+		return nil
+	}}
+
+	result := make(chan error, 1)
+	go func() {
+		result <- runLifecycle(ctx, server, listener, testLogger(), 3*time.Second, loop, config.Worker{})
+	}()
+
+	select {
+	case err := <-result:
+		require.Error(t, err, "a broken HTTP listener is a fatal application error")
+		assert.ErrorContains(t, err, "http server")
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "the application did not stop after the HTTP failure")
+	}
+
+	select {
+	case <-stopped:
+	case <-time.After(3 * time.Second):
+		require.FailNow(t, "the background loop must stop when HTTP fails")
+	}
+
+	rebound, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", addr)
+	require.NoError(t, err, "the HTTP failure must release the port")
+	_ = rebound.Close()
 }
