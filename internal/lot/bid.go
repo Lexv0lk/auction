@@ -36,6 +36,11 @@ var (
 	// ErrBiddingClosed means the lot no longer accepts bids: the deadline has
 	// passed or the worker has finished the lot.
 	ErrBiddingClosed = errors.New("the bidding is closed for the lot")
+	// ErrCommitOutcomeUnknown marks a commit failure: the bid may or may not
+	// be stored. It is a technical error, never a typed refusal — the caller
+	// must not report a guaranteed rejection and must repeat the original
+	// request with the same key.
+	ErrCommitOutcomeUnknown = errors.New("bid commit outcome is unknown")
 )
 
 // The bid follows the one fixed lock order of the lot operations: the lot row
@@ -141,7 +146,7 @@ func (s *Service) PlaceBid(ctx context.Context, participantID, lotID int64, amou
 			return PlacedBid{}, ErrRequestKeyConflict
 		}
 		if err := tx.Commit(ctx); err != nil {
-			return PlacedBid{}, fmt.Errorf("commit bid transaction: %w", err)
+			return PlacedBid{}, fmt.Errorf("commit bid transaction: %w: %w", ErrCommitOutcomeUnknown, err)
 		}
 
 		return PlacedBid{
@@ -191,7 +196,7 @@ func (s *Service) PlaceBid(ctx context.Context, participantID, lotID int64, amou
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return PlacedBid{}, fmt.Errorf("commit bid transaction: %w", err)
+		return PlacedBid{}, fmt.Errorf("commit bid transaction: %w: %w", ErrCommitOutcomeUnknown, err)
 	}
 
 	return PlacedBid{

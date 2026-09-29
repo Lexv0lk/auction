@@ -107,7 +107,7 @@ func TestLotPageShowsStatesAndResults(t *testing.T) {
 			public: lot.PublicLot{ID: 7, Title: "Рубль", Description: "Описание", CategoryName: "Нумизматика",
 				StartPrice: 5000, Status: lot.StatusActive, State: lot.DisplayStateActive,
 				CurrentPrice: 5000, EndsAt: endsAt},
-			wantContains:  []string{"5000", "Ставок ещё не было", "Отправка ставок будет открыта", `id="bid-form"`},
+			wantContains:  []string{"5000", "Ставок ещё не было", `name="request_key"`, `id="bid-form"`, "Сделать ставку"},
 			wantNotExpect: []string{"Победитель"},
 		},
 		{

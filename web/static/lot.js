@@ -1,7 +1,11 @@
-// Periodic state refresh of the lot page. The server-rendered page stays the
-// baseline: this script only replaces text content, never builds money
-// values through Number, and shows an explicit staleness note while the
-// refresh is failing. Requests never overlap: a slow answer skips its tick.
+// Periodic state refresh of the lot page and the bid submission. The
+// server-rendered page stays the baseline: the script replaces text content,
+// never builds money values through Number, and shows an explicit staleness
+// note while the refresh is failing. Requests never overlap: a slow answer
+// skips its tick. The bid intention (amount + request key) lives in the tab
+// storage — never a password or a session token — so a reload or a retry
+// after a lost answer repeats the same request, which the server answers
+// idempotently.
 (function () {
   'use strict';
 
@@ -89,7 +93,9 @@
       stateLabel.textContent = displayLabels[data.display_status] || data.display_status;
     }
     // Money values arrive as decimal strings and stay strings: textContent
-    // never converts them through Number.
+    // never converts them through Number. The bid intention (the input value
+    // and the request key) is deliberately untouched here: a state refresh
+    // never rewrites the request being sent.
     setText(priceElement, data.current_price);
     setText(minimumElement, data.minimum_next_bid === null ? '—' : data.minimum_next_bid);
     if (bidPlace) {
@@ -133,4 +139,176 @@
     setText(countdownElement, countdownText());
   }, TICK_MS);
   refresh();
+
+  // ---- Bid submission -----------------------------------------------------
+  // The form works without JavaScript; the script only upgrades it: it sends
+  // the same contract to the JSON API, keeps one request key per intention
+  // and blocks a second click while one answer is pending.
+
+  var form = document.getElementById('bid-form');
+  if (!form) {
+    return;
+  }
+  var amountInput = document.getElementById('bid-amount');
+  var submitButton = form.querySelector('button[type="submit"]');
+  var messageElement = document.getElementById('bid-message');
+  var csrfField = form.querySelector('input[name="gorilla.csrf.Token"]');
+  var keyField = form.querySelector('input[name="request_key"]');
+  if (!amountInput || !submitButton || !messageElement || !csrfField || !keyField) {
+    return;
+  }
+
+  var bidApiUrl = apiUrl + '/bids';
+  var lotPageUrl = form.getAttribute('action').replace(/\/bids$/, '');
+  var intentStorageKey = 'auction-bid-intent:' + lotPageUrl;
+  var bidInFlight = false;
+
+  var UNKNOWN_OUTCOME_MESSAGE =
+    'Результат отправки неизвестен: повторите отправку той же суммы — повтор безопасен.';
+
+  function loadIntent() {
+    try {
+      var intent = JSON.parse(sessionStorage.getItem(intentStorageKey));
+      if (intent && typeof intent.amount === 'string' && typeof intent.request_key === 'string') {
+        return intent;
+      }
+    } catch (error) {
+      // A broken or absent entry simply means "no pending intention".
+    }
+
+    return null;
+  }
+
+  function saveIntent(intent) {
+    try {
+      sessionStorage.setItem(intentStorageKey, JSON.stringify(intent));
+    } catch (error) {
+      // Storage may be unavailable; the server-side idempotency still makes
+      // every attempt safe.
+    }
+  }
+
+  function clearIntent() {
+    try {
+      sessionStorage.removeItem(intentStorageKey);
+    } catch (error) {
+      // Nothing to do: the next confirmed answer rewrites the storage anyway.
+    }
+  }
+
+  function newRequestKey() {
+    if (window.crypto && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    // A fallback for the rare old browser without crypto.randomUUID: a
+    // random version-4 UUID in the canonical shape.
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (symbol) {
+      var random = Math.floor(Math.random() * 16);
+      var value = symbol === 'x' ? random : (random & 0x3) | 0x8;
+
+      return value.toString(16);
+    });
+  }
+
+  function showMessage(text) {
+    messageElement.textContent = text;
+    messageElement.hidden = false;
+  }
+
+  function hideMessage() {
+    messageElement.hidden = true;
+  }
+
+  function finishConfirmed(status, body) {
+    // A confirmed answer ends the intention: the next bid is a new one.
+    clearIntent();
+    var marker = status === 201 ? 'placed' : 'replayed';
+    window.location.assign(lotPageUrl + '?' + marker + '=' + body.bid.id);
+  }
+
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    if (bidInFlight) {
+      return;
+    }
+
+    var amount = amountInput.value;
+    var intent = loadIntent();
+    if (!intent || intent.amount !== amount) {
+      // A new amount is a new intention: it gets its own key, so a stored
+      // result of the old intention can never be mistaken for this one.
+      intent = { amount: amount, request_key: newRequestKey() };
+      saveIntent(intent);
+    }
+
+    bidInFlight = true;
+    submitButton.disabled = true;
+    hideMessage();
+
+    fetch(bidApiUrl, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-CSRF-Token': csrfField.value
+      },
+      body: JSON.stringify({ amount: intent.amount, request_key: intent.request_key })
+    })
+      .then(function (response) {
+        if (response.status === 201 || response.status === 200) {
+          return response.json().then(function (body) {
+            finishConfirmed(response.status, body);
+          });
+        }
+
+        return response
+          .json()
+          .catch(function () {
+            return null;
+          })
+          .then(function (body) {
+            bidInFlight = false;
+            submitButton.disabled = false;
+
+            var code = body && body.error ? body.error.code : '';
+            var message = body && body.error && body.error.message ? body.error.message : UNKNOWN_OUTCOME_MESSAGE;
+
+            if (response.status === 403 && code === 'csrf_invalid') {
+              // The masked token of this page no longer matches the stored
+              // CSRF cookie: the request never reached the auction logic, so
+              // the plain form submission is the safe retry.
+              form.submit();
+              return;
+            }
+            if (response.status === 401) {
+              // The session has expired: name the next step, keep the
+              // intention and never send the money action automatically
+              // after a re-login.
+              showMessage('Сессия истекла: войдите заново, затем повторите отправку той же суммы.');
+              return;
+            }
+            if (response.status >= 500 || response.status === 0) {
+              // The outcome is unknown — the bid may have been stored. The
+              // intention stays; the same amount and key repeat the request.
+              showMessage(message || UNKNOWN_OUTCOME_MESSAGE);
+              refresh();
+              return;
+            }
+            if (response.status === 409) {
+              // A confirmed refusal: refresh the price and the state so the
+              // next attempt starts from fresh data.
+              refresh();
+            }
+            showMessage(message);
+          });
+      })
+      .catch(function () {
+        // A network failure leaves the outcome unknown: the intention and
+        // its key stay, the user repeats the same request.
+        bidInFlight = false;
+        submitButton.disabled = false;
+        showMessage(UNKNOWN_OUTCOME_MESSAGE);
+      });
+  });
 })();

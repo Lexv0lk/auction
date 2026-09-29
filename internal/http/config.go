@@ -41,7 +41,8 @@ type Categories interface {
 // Lots is the lot-service contract the HTTP layer depends on. Only the
 // editable fields travel into the service: status and result fields are
 // decided by the lot operations themselves. The participant reads never
-// return drafts.
+// return drafts, and every bid goes through the single PlaceBid operation
+// with the participant identity taken from the session.
 type Lots interface {
 	List(ctx context.Context) ([]lot.Lot, error)
 	Get(ctx context.Context, id int64) (lot.Lot, error)
@@ -52,6 +53,7 @@ type Lots interface {
 	Catalog(ctx context.Context, filter lot.CatalogFilter) ([]lot.CatalogItem, bool, error)
 	GetPublicLot(ctx context.Context, id int64) (lot.PublicLot, error)
 	ListBids(ctx context.Context, lotID int64, page int) ([]lot.Bid, bool, error)
+	PlaceBid(ctx context.Context, participantID, lotID int64, amount int64, requestKey string) (lot.PlacedBid, error)
 }
 
 // NewCSRFKey derives the CSRF signing key from the configured secret. Hashing

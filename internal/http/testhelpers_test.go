@@ -127,6 +127,7 @@ type fakeLots struct {
 	catalogFunc func(ctx context.Context, filter lot.CatalogFilter) ([]lot.CatalogItem, bool, error)
 	publicFunc  func(ctx context.Context, id int64) (lot.PublicLot, error)
 	bidsFunc    func(ctx context.Context, lotID int64, page int) ([]lot.Bid, bool, error)
+	placeFunc   func(ctx context.Context, participantID, lotID int64, amount int64, requestKey string) (lot.PlacedBid, error)
 
 	listCalls    int
 	createCalls  int
@@ -136,11 +137,22 @@ type fakeLots struct {
 	catalogCalls int
 	publicCalls  int
 	bidsCalls    int
+	placeCalls   int
 
 	lastFilter lot.CatalogFilter
 	lastInput  lot.Input
 	lastID     int64
 	lastPage   int
+	lastPlace  placeCall
+}
+
+// placeCall records one PlaceBid invocation: the participant always comes
+// from the session, so a test can prove the body never overrides it.
+type placeCall struct {
+	ParticipantID int64
+	LotID         int64
+	Amount        int64
+	RequestKey    string
 }
 
 func (f *fakeLots) List(ctx context.Context) ([]lot.Lot, error) {
@@ -231,6 +243,16 @@ func (f *fakeLots) ListBids(ctx context.Context, lotID int64, page int) ([]lot.B
 	}
 
 	return f.bidsFunc(ctx, lotID, page)
+}
+
+func (f *fakeLots) PlaceBid(ctx context.Context, participantID, lotID int64, amount int64, requestKey string) (lot.PlacedBid, error) {
+	f.placeCalls++
+	f.lastPlace = placeCall{ParticipantID: participantID, LotID: lotID, Amount: amount, RequestKey: requestKey}
+	if f.placeFunc == nil {
+		return lot.PlacedBid{}, nil
+	}
+
+	return f.placeFunc(ctx, participantID, lotID, amount, requestKey)
 }
 
 var testCSRFKey = []byte("unit-test-csrf-key-unit-test-csrf-")

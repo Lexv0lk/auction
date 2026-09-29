@@ -282,6 +282,44 @@ func TestPlaceBidWrapsTechnicalFailures(t *testing.T) {
 	assert.NotErrorIs(t, err, ErrBidTooLow)
 }
 
+func TestPlaceBidCommitFailureMarksOutcomeUnknown(t *testing.T) {
+	// A begin failure happens before anything is written: a plain temporary
+	// failure, not an unknown commit.
+	service := NewService(&fakePool{beginErr: errBeginFailed})
+	_, err := service.PlaceBid(context.Background(), 5, 3, 100, validBidKey())
+	assert.ErrorIs(t, err, errBeginFailed)
+	assert.NotErrorIs(t, err, ErrCommitOutcomeUnknown)
+
+	// A statement failure before the insert stores nothing: the outcome is a
+	// known temporary refusal.
+	tx := bidTx(t,
+		bidLockRow(100, StatusActive, time.Date(2026, 10, 5, 9, 0, 0, 0, time.UTC)),
+		fakeRow{err: errDatabaseDown},
+		fakeRow{},
+		fakeRow{},
+	)
+	service = NewService(&fakePool{tx: tx})
+	_, err = service.PlaceBid(context.Background(), 5, 3, 100, validBidKey())
+	assert.ErrorIs(t, err, errDatabaseDown)
+	assert.NotErrorIs(t, err, ErrCommitOutcomeUnknown)
+
+	// The insert ran and the commit failed: the bid may or may not be stored,
+	// so the caller must recognize the unknown outcome and repeat the
+	// original request with the same key.
+	tx = bidTx(t,
+		bidLockRow(100, StatusActive, time.Date(2026, 10, 5, 9, 0, 0, 0, time.UTC)),
+		fakeRow{err: pgx.ErrNoRows},
+		fakeRow{values: []any{int64(0)}},
+		fakeRow{values: []any{int64(9), time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)}},
+	)
+	tx.commitErr = errCommitFailed
+	service = NewService(&fakePool{tx: tx})
+	_, err = service.PlaceBid(context.Background(), 5, 3, 100, validBidKey())
+	assert.ErrorIs(t, err, ErrCommitOutcomeUnknown, "a failed commit leaves the outcome unknown")
+	assert.ErrorIs(t, err, errCommitFailed, "the technical cause stays reachable for the log")
+	assert.NotErrorIs(t, err, ErrBidTooLow, "an unknown commit is never a typed refusal")
+}
+
 func TestValidRequestKey(t *testing.T) {
 	assert.True(t, validRequestKey("0f0e0d0c-0b0a-4938-8271-6a5b4c3d2e1f"))
 	assert.True(t, validRequestKey("0F0E0D0C-0B0A-4938-8271-6A5B4C3D2E1F"), "upper-case hex is the same UUID format")

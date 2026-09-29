@@ -22,13 +22,16 @@
 {{else if eq .Lot.State "active"}}
   <section id="bid-form-place">
     <h2>Ставка</h2>
+    {{if .BidNotice}}<p id="bid-result" class="lot-result">{{.BidNotice}}</p>{{end}}
     {{if .CanBid}}
-    <p id="bid-form-note">Отправка ставок будет открыта в следующем шаге реализации; сейчас ставка не принимается.</p>
     <form id="bid-form" method="post" action="/lots/{{.Lot.ID}}/bids">
+      {{.CSRFToken}}
+      <input type="hidden" name="request_key" id="bid-request-key" value="{{.BidForm.RequestKey}}">
       <p><label for="bid-amount">Сумма ставки</label><br>
-      <input type="number" id="bid-amount" name="amount" min="{{if .MinimumNextBid}}{{.MinimumNextBid}}{{end}}" step="1" required disabled>
-      <button type="submit" disabled>Сделать ставку</button></p>
+      <input type="number" id="bid-amount" name="amount" value="{{.BidForm.Amount}}" min="{{if .MinimumNextBid}}{{.MinimumNextBid}}{{end}}" step="1" required>
+      <button type="submit">Сделать ставку</button></p>
     </form>
+    <p id="bid-message" hidden role="alert" class="error"></p>
     {{else}}
     <p id="bid-form-note">Новая ставка невозможна: предел цены достигнут или торги закрыты.</p>
     {{end}}

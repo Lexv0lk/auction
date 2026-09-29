@@ -69,18 +69,29 @@ type catalogData struct {
 
 // lotPublicData is the payload of the published lot page; MinimumNextBid is
 // nil when the state accepts no next bid (closed bidding or the int64
-// maximum reached).
+// maximum reached). BidForm carries the form values of the current attempt:
+// a fresh request key on a plain page load, the submitted values on a
+// re-rendered failure.
 type lotPublicData struct {
 	pageData
 	Lot            lot.PublicLot
 	MinimumNextBid *int64
 	CanBid         bool
+	BidNotice      string
+	BidForm        bidForm
 	Bids           []lot.Bid
 	BidsPage       int
 	PrevBidsURL    string
 	NextBidsURL    string
 	BidsHasPrev    bool
 	BidsHasNext    bool
+}
+
+// bidForm keeps one bid attempt exactly as the form submitted it: a failed
+// submission re-renders the same amount and the same intention key.
+type bidForm struct {
+	Amount     string
+	RequestKey string
 }
 
 type errorData struct {

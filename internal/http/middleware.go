@@ -49,6 +49,37 @@ func (h *Handler) limitLoginBody(next http.Handler) http.Handler {
 	})
 }
 
+// maxBidBodyBytes bounds one bid submission, JSON or form: the contract
+// carries two short fields and nothing else.
+const maxBidBodyBytes = 4096
+
+// limitBidBody rejects oversized bid submissions before the CSRF middleware
+// reads anything, for both bid routes alike.
+func (h *Handler) limitBidBody(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isBidSubmission(r.URL.Path) {
+			if r.ContentLength > maxBidBodyBytes {
+				h.Error(w, r, http.StatusRequestEntityTooLarge, "request_too_large", "Слишком большое тело запроса")
+
+				return
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, maxBidBodyBytes)
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// isBidSubmission reports whether the path is one of the bid routes: the
+// HTML form and the JSON API under /lots/ and /api/lots/.
+func isBidSubmission(path string) bool {
+	if !strings.HasSuffix(path, "/bids") {
+		return false
+	}
+
+	return strings.HasPrefix(path, "/lots/") || strings.HasPrefix(path, "/api/lots/")
+}
+
 // withUser validates the session cookie on every request and loads the
 // account into the context. A missing, expired or substituted cookie simply
 // leaves the request as a guest; a database failure is a technical 503, never

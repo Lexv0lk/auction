@@ -68,21 +68,29 @@ func NewHandler(logger *slog.Logger, authenticator Authenticator, categories Cat
 	// The participant area is open to every authenticated role: the catalog
 	// and the lot page read only published lots, so a draft is invisible here
 	// by construction (the service answers it as a missing lot). The API
-	// route answers guests with 401 JSON, the pages with a login redirect.
+	// routes answer guests with 401 JSON, the pages with a login redirect.
+	// Bidding is the one participant-only action: the administrator is
+	// refused before any service call.
 	mux.Handle("GET /lots", h.requireUser(http.HandlerFunc(h.catalogPage)))
 	mux.Handle("GET /lots/{id}", h.requireUser(http.HandlerFunc(h.lotPublicPage)))
 	mux.Handle("GET /api/lots/{id}", h.requireUser(http.HandlerFunc(h.lotStateAPI)))
+	participantOnly := func(next http.Handler) http.Handler {
+		return h.requireUser(h.requireRole(auth.RoleParticipant, next))
+	}
+	mux.Handle("POST /lots/{id}/bids", participantOnly(http.HandlerFunc(h.bidFormSubmit)))
+	mux.Handle("POST /api/lots/{id}/bids", participantOnly(http.HandlerFunc(h.bidAPISubmit)))
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		h.Error(w, r, http.StatusNotFound, "not_found", "Страница не найдена")
 	})
 
 	// Middleware order, outermost first: request ID and panic recovery, the
-	// liveness probe (no cookies, no session work), the login body limit,
-	// the plaintext marker for local HTTP, CSRF, session loading. The request
-	// ID is therefore available to the CSRF and session error answers, and
-	// the panic log.
-	wrappedHandler := h.enrichWithID(h.exceptLivez(h.limitLoginBody(h.markPlaintext(h.csrf(h.withUser(mux))))))
+	// liveness probe (no cookies, no session work), the body limits, the
+	// plaintext marker for local HTTP, CSRF, session loading. The request ID
+	// is therefore available to the CSRF and session error answers, and the
+	// panic log. The body limits run before CSRF, which parses form bodies
+	// itself.
+	wrappedHandler := h.enrichWithID(h.exceptLivez(h.limitLoginBody(h.limitBidBody(h.markPlaintext(h.csrf(h.withUser(mux)))))))
 
 	return wrappedHandler, nil
 }

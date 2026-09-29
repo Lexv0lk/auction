@@ -92,16 +92,24 @@ func (h *Handler) lotPublicPage(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	h.renderLotPage(w, r, http.StatusOK, id, nil, bidNoticeFromQuery(r), "")
+}
+
+// renderLotPage loads the current lot state and renders the participant lot
+// page. form == nil marks a plain page load: the bid form carries a newly
+// issued request key. notice and errorText fill the page banner; a failed
+// load falls back to the shared error answer, which the bool reports.
+func (h *Handler) renderLotPage(w http.ResponseWriter, r *http.Request, status int, id int64, form *bidForm, notice, errorText string) bool {
 	p, err := h.lots.GetPublicLot(r.Context(), id)
 	if errors.Is(err, lot.ErrNotFound) {
 		h.lotNotFound(w, r)
 
-		return
+		return false
 	}
 	if err != nil {
 		h.lotServiceError(w, r, "load public lot", err)
 
-		return
+		return false
 	}
 
 	bidsPage := 1
@@ -112,16 +120,24 @@ func (h *Handler) lotPublicPage(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.lotServiceError(w, r, "list bids", err)
 
-		return
+		return false
 	}
 
+	if form == nil {
+		// Every rendered page issues the key of one fresh bid intention; a
+		// resubmission of the same form repeats the same intention.
+		form = &bidForm{RequestKey: lot.NewRequestKey()}
+	}
 	data := h.newPageData(r)
 	data.Title = p.Title
-	h.renderPage(w, r, http.StatusOK, "lot_page.html", lotPublicData{
+	data.Error = errorText
+	h.renderPage(w, r, status, "lot_page.html", lotPublicData{
 		pageData:       data,
 		Lot:            p,
 		MinimumNextBid: publicMinimumNextBid(p),
 		CanBid:         p.CanBid(),
+		BidNotice:      notice,
+		BidForm:        *form,
 		Bids:           bids,
 		BidsPage:       bidsPage,
 		PrevBidsURL:    lotPageURL(id, bidsPage-1),
@@ -129,6 +145,37 @@ func (h *Handler) lotPublicPage(w http.ResponseWriter, r *http.Request) {
 		BidsHasPrev:    bidsPage > 1,
 		BidsHasNext:    bidsHasMore,
 	})
+
+	return true
+}
+
+// bidNoticeFromQuery turns the redirect marker of a successful form post
+// into the page notice; any other value names no marker and shows nothing,
+// so a hand-edited address cannot inject text.
+func bidNoticeFromQuery(r *http.Request) string {
+	if id := r.FormValue("placed"); isDecimalID(id) {
+		return "Ставка принята: " + id + "."
+	}
+	if id := r.FormValue("replayed"); isDecimalID(id) {
+		return "Эта ставка уже была учтена ранее (ID " + id + "): это повтор того же запроса."
+	}
+
+	return ""
+}
+
+// isDecimalID reports whether the value is a short decimal number: the only
+// shape the redirect markers carry.
+func isDecimalID(value string) bool {
+	if value == "" || len(value) > 18 {
+		return false
+	}
+	for i := 0; i < len(value); i++ {
+		if value[i] < '0' || value[i] > '9' {
+			return false
+		}
+	}
+
+	return true
 }
 
 func publicMinimumNextBid(p lot.PublicLot) *int64 {
