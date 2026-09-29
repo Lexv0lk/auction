@@ -17,6 +17,7 @@ const (
 	pgErrForeignKeyViolation = "23503"
 
 	categoryFKConstraint = "lots_category_id_fk"
+	bidsUserFKConstraint = "bids_user_id_fk"
 )
 
 // The reads join the category name for display. The state changes follow one
@@ -46,11 +47,13 @@ const (
 
 // Pool is the subset of the connection pool the lot service needs. Reads run
 // outside transactions; every state change wraps its lock-and-check sequence
-// into one transaction (pgx.Tx).
+// into one transaction (pgx.Tx). BeginTx lets the bid operation pin its
+// isolation level instead of trusting the database default.
 type Pool interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	Begin(ctx context.Context) (pgx.Tx, error)
+	BeginTx(ctx context.Context, options pgx.TxOptions) (pgx.Tx, error)
 }
 
 // Service implements the draft CRUD and publication over the shared
@@ -288,17 +291,24 @@ func lockLotStatus(ctx context.Context, tx pgx.Tx, id int64) (string, error) {
 	return status, nil
 }
 
-// mapConstraintError returns the domain error for the category foreign key
-// violation and nil for every other error.
+// mapConstraintError returns the domain error for the foreign keys the
+// operations translate — the lot's category and the bid's participant — and
+// nil for every other error.
 func mapConstraintError(err error) error {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {
 		return nil
 	}
 
-	if pgErr.Code == pgErrForeignKeyViolation && pgErr.ConstraintName == categoryFKConstraint {
-		return ErrCategoryMissing
+	if pgErr.Code != pgErrForeignKeyViolation {
+		return nil
 	}
-
-	return nil
+	switch pgErr.ConstraintName {
+	case categoryFKConstraint:
+		return ErrCategoryMissing
+	case bidsUserFKConstraint:
+		return ErrParticipantMissing
+	default:
+		return nil
+	}
 }

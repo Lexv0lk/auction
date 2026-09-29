@@ -76,14 +76,24 @@ type queryCall struct {
 	args []any
 }
 
+// fakeTxResponse routes one statement to a fixed record by a SQL substring;
+// the first match wins and the recorded order of the statements is kept
+// separately in queries.
+type fakeTxResponse struct {
+	contains string
+	row      fakeRow
+}
+
 // fakeTx records the statements of one transaction. lockRow answers the
 // SELECT ... FOR UPDATE probe, changeRow answers the RETURNING statements of
-// the state changes.
+// the state changes, and responses override both for statements that need
+// their own answer.
 type fakeTx struct {
 	pgx.Tx    // embedded nil interface guards the unused members
 	lockRow   fakeRow
 	changeRow fakeRow
 	commitErr error
+	responses []fakeTxResponse
 
 	queries    []queryCall
 	committed  bool
@@ -92,6 +102,11 @@ type fakeTx struct {
 
 func (tx *fakeTx) QueryRow(_ context.Context, sql string, args ...any) pgx.Row {
 	tx.queries = append(tx.queries, queryCall{sql: sql, args: args})
+	for _, response := range tx.responses {
+		if strings.Contains(sql, response.contains) {
+			return response.row
+		}
+	}
 	if strings.Contains(sql, "UPDATE lots SET") ||
 		strings.Contains(sql, "DELETE FROM lots") ||
 		strings.Contains(sql, "status = 'active'") {
@@ -114,12 +129,14 @@ func (tx *fakeTx) Rollback(context.Context) error {
 }
 
 // fakePool serves the non-transactional statements and hands out the same
-// fakeTx to every Begin call.
+// fakeTx to every Begin/BeginTx call; txOptions records the isolation level
+// the service requested.
 type fakePool struct {
-	row      fakeRow // Create INSERT ... RETURNING and Get
-	rows     *fakeRows
-	beginErr error
-	tx       *fakeTx
+	row       fakeRow // Create INSERT ... RETURNING and Get
+	rows      *fakeRows
+	beginErr  error
+	tx        *fakeTx
+	txOptions pgx.TxOptions
 
 	queries []queryCall
 }
@@ -145,4 +162,10 @@ func (p *fakePool) Begin(context.Context) (pgx.Tx, error) {
 	}
 
 	return p.tx, nil
+}
+
+func (p *fakePool) BeginTx(_ context.Context, options pgx.TxOptions) (pgx.Tx, error) {
+	p.txOptions = options
+
+	return p.Begin(context.Background())
 }
