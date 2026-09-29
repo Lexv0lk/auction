@@ -12,6 +12,13 @@ TEST_POSTGRES_PORT ?= 5433
 # your own TEST_DATABASE_URL to run them against another PostgreSQL instance.
 export TEST_DATABASE_URL ?= postgres://auction:$(POSTGRES_PASSWORD)@localhost:$(TEST_POSTGRES_PORT)/auction_test?sslmode=disable
 
+# make seed reads the same DATABASE_URL as the server plus the demo account
+# passwords; values from .env (included above) or the environment are passed
+# through to the script.
+export DATABASE_URL
+export SEED_ADMIN_PASSWORD
+export SEED_PARTICIPANT_PASSWORD
+
 ifeq ($(OS),Windows_NT)
 EXE := .exe
 RUN := pwsh -NoProfile -File ./scripts/dev.ps1 -EnvFile "$(ENV_FILE)"
@@ -27,7 +34,7 @@ help:
 	@echo app-help          Show server usage
 	@echo run               Start the web server
 	@echo migrate           Apply SQL from migrations/ with the migration container
-	@echo seed              Run the demo data script - planned for step 04
+	@echo seed              Fill the database with demo accounts and drafts (make migrate first)
 	@echo lint              Check Go code with golangci-lint
 	@echo fmt               Format Go code with golangci-lint
 	@echo fmt-check         Check Go formatting without changing files
@@ -55,7 +62,7 @@ migrate:
 	docker compose run --rm migrate
 
 seed:
-	$(error Seed script is not implemented yet - step 04)
+	$(GO) run ./scripts/seed
 
 lint-version: go-version
 	$(if $(filter $(GOLANGCI_LINT_VERSION),$(shell $(GOLANGCI_LINT) version --short)),@echo golangci-lint $(GOLANGCI_LINT_VERSION),$(error golangci-lint $(GOLANGCI_LINT_VERSION) is required))
