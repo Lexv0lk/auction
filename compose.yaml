@@ -1,15 +1,21 @@
-# Local development and integration test databases.
+# Compose topology of the release (12-factor V, XII):
 #
-#   make migrate          applies migrations/ to the db service (port 5432)
-#   make test-integration applies the same SQL to db-test (port 5433) and runs
-#                         the integration-tagged Go tests against it
+#   persistent services   db (PostgreSQL) and server (the application image)
+#   one-off services      migrate and seed — administrative operations built
+#                         from the same commit, they run and exit
 #
-# POSTGRES_PASSWORD and the host ports come from the environment or .env
-# (see .env.example). Images are pinned; do not use a floating tag. The
-# application itself never migrates or seeds the databases.
+# The database volume is the only persistent state; the server replicas keep
+# no local files. Images are pinned; do not use a floating tag. The server
+# never migrates or seeds the database — run `make migrate` (and optionally
+# `make seed`) before `make up`.
+#
+# POSTGRES_PASSWORD, the host ports and the application settings come from
+# the environment or .env (see .env.example). Secrets are interpolated by
+# Compose into the containers' environment only; they are not stored in
+# images or this file.
 services:
   db:
-    image: postgres:18.6-alpine
+    image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
     environment:
       POSTGRES_USER: auction
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}
@@ -24,14 +30,65 @@ services:
       timeout: 3s
       retries: 30
       start_period: 5s
+    restart: unless-stopped
 
-  migrate:
-    image: migrate/migrate:v4.20.1
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: server
+    image: auction/server:local
     depends_on:
       db:
         condition: service_healthy
-    volumes:
-      - ./migrations:/migrations:ro
+    # The container always listens on 8080 (HTTP_ADDR below): the published
+    # host port is the configuration point, so the container healthcheck can
+    # stay fixed. Every other setting is an independent environment variable
+    # (12-factor III); CSRF_SECRET must be shared by all replicas.
+    environment:
+      DATABASE_URL: postgres://auction:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}@db:5432/auction?sslmode=disable
+      HTTP_ADDR: ":8080"
+      CSRF_SECRET: ${CSRF_SECRET:?CSRF_SECRET is required (see .env.example)}
+      SESSION_TTL: ${SESSION_TTL:-24h}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      METRICS_ENABLED: ${METRICS_ENABLED:-true}
+      DB_MAX_CONNS: ${DB_MAX_CONNS:-10}
+      DB_TIMEOUT: ${DB_TIMEOUT:-5s}
+      HTTP_READ_TIMEOUT: ${HTTP_READ_TIMEOUT:-10s}
+      HTTP_WRITE_TIMEOUT: ${HTTP_WRITE_TIMEOUT:-15s}
+      HTTP_IDLE_TIMEOUT: ${HTTP_IDLE_TIMEOUT:-60s}
+      BID_TX_TIMEOUT: ${BID_TX_TIMEOUT:-5s}
+      # The shutdown budget (default 10s) must stay below stop_grace_period.
+      SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-10s}
+      WORKER_POLL_INTERVAL: ${WORKER_POLL_INTERVAL:-1s}
+      WORKER_BATCH_SIZE: ${WORKER_BATCH_SIZE:-100}
+    ports:
+      - "127.0.0.1:${HTTP_PORT:-18080}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/livez"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+    # stop_grace_period gives the process the SHUTDOWN_TIMEOUT budget plus a
+    # margin before SIGKILL; SIGTERM itself is handled by the Go process.
+    stop_grace_period: 15s
+    restart: unless-stopped
+
+  # One-off migration container built from the pinned migrate tool and the
+  # SQL of the same commit (no bind mounts from the working checkout). On a
+  # failed migration it exits non-zero and `make up` will refuse to start
+  # the server against the wrong schema version (/readyz 503, then exit 1).
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrations
+    image: auction/migrations:local
+    depends_on:
+      db:
+        condition: service_healthy
     command:
       [
         "-path", "/migrations/",
@@ -39,8 +96,26 @@ services:
         "up",
       ]
 
+  # One-off seed container: the demo data command built from the same commit
+  # and dependencies (go.mod/go.sum of the same build). It runs against the
+  # compose database and exits.
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: seed
+    image: auction/seed:local
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://auction:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}@db:5432/auction?sslmode=disable
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?SEED_ADMIN_PASSWORD is required (see .env.example)}
+      SEED_PARTICIPANT_PASSWORD: ${SEED_PARTICIPANT_PASSWORD:?SEED_PARTICIPANT_PASSWORD is required (see .env.example)}
+
+  # --- integration test database (not part of the release) -------------------
   db-test:
-    image: postgres:18.6-alpine
+    image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
     environment:
       POSTGRES_USER: auction
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (see .env.example)}
@@ -57,12 +132,14 @@ services:
       start_period: 5s
 
   migrate-test:
-    image: migrate/migrate:v4.20.1
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrations
+    image: auction/migrations:local
     depends_on:
       db-test:
         condition: service_healthy
-    volumes:
-      - ./migrations:/migrations:ro
     command:
       [
         "-path", "/migrations/",

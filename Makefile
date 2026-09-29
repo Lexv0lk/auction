@@ -27,14 +27,21 @@ EXE :=
 RUN := $(GO) run ./cmd/server
 endif
 
-.PHONY: help go-version build app-help run migrate seed lint-version lint fmt fmt-check test vet test-race test-integration test-integration-race test-integration-repeat check
+.PHONY: help go-version build app-help run migrate seed images release up down replicas replicas-down server-logs lint-version lint fmt fmt-check test vet test-race test-integration test-integration-race test-integration-repeat check
 
 help:
 	@echo build             Build bin/server
 	@echo app-help          Show server usage
-	@echo run               Start the web server
-	@echo migrate           Apply SQL from migrations/ with the migration container
-	@echo seed              Fill the database with demo accounts and drafts (make migrate first)
+	@echo run               Start the web server from the working tree (host Go)
+	@echo images            Build the server, seed and migrations images
+	@echo release           Build the images and record releases/<RELEASE_ID>.json
+	@echo migrate           Apply SQL from migrations/ with the migration image (make migrate)
+	@echo seed              Fill the database with demo accounts and drafts (seed image; make migrate first)
+	@echo up                Start PostgreSQL and the server from the built images (--no-build)
+	@echo down              Stop the compose services (database data is kept)
+	@echo replicas          Start two identical server replicas with unique host ports
+	@echo replicas-down     Stop and remove the two replicas (the database stays up)
+	@echo server-logs       Follow the server container logs
 	@echo lint              Check Go code with golangci-lint
 	@echo fmt               Format Go code with golangci-lint
 	@echo fmt-check         Check Go formatting without changing files
@@ -58,11 +65,40 @@ app-help:
 run:
 	$(RUN)
 
+# Release flow (12-factor V): build the artifacts once, then run everything
+# else from the built images. `make up` passes --no-build to Compose: no
+# compilation and no dependency download happen at run time.
+images:
+	docker build --target server -t auction/server:local .
+	docker build --target seed -t auction/seed:local .
+	docker build --target migrations -t auction/migrations:local .
+
+release:
+	ENV_FILE="$(ENV_FILE)" bash scripts/release.sh
+
+up:
+	docker compose up -d --no-build server
+
+down:
+	docker compose down
+
+# Two identical replicas with unique published host ports (12-factor VIII);
+# the compose server service is not started here.
+replicas:
+	docker compose -f compose.yaml -f compose.replicas.yaml up -d --no-build db server-1 server-2
+
+replicas-down:
+	docker compose -f compose.yaml -f compose.replicas.yaml stop server-1 server-2
+	docker compose -f compose.yaml -f compose.replicas.yaml rm -f server-1 server-2
+
+server-logs:
+	docker compose logs -f server
+
 migrate:
-	docker compose run --rm migrate
+	docker compose run --rm --build migrate
 
 seed:
-	$(GO) run ./scripts/seed
+	docker compose run --rm --build seed
 
 lint-version: go-version
 	$(if $(filter $(GOLANGCI_LINT_VERSION),$(shell $(GOLANGCI_LINT) version --short)),@echo golangci-lint $(GOLANGCI_LINT_VERSION),$(error golangci-lint $(GOLANGCI_LINT_VERSION) is required))
@@ -91,17 +127,17 @@ test-race:
 # (each of which resets the data) from interfering with each other.
 test-integration:
 	docker compose up -d --wait db-test
-	docker compose run --rm migrate-test
+	docker compose run --rm --build migrate-test
 	$(GO) test -p 1 -tags=integration ./...
 
 test-integration-race:
 	docker compose up -d --wait db-test
-	docker compose run --rm migrate-test
+	docker compose run --rm --build migrate-test
 	$(GO) test -p 1 -race -tags=integration ./...
 
 test-integration-repeat:
 	docker compose up -d --wait db-test
-	docker compose run --rm migrate-test
+	docker compose run --rm --build migrate-test
 	$(GO) test -p 1 -tags=integration -count=10 ./...
 
 check: go-version build fmt-check lint vet test

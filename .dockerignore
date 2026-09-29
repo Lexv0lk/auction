@@ -1,0 +1,41 @@
+# The build context carries only what the Dockerfile copies: the Go sources,
+# the embedded web assets, the migrations and the seed command. Everything
+# else stays out of the image (12-factor III: no secrets; 12-factor II: a
+# clean, reproducible build).
+
+# VCS, IDE and local working state
+.git
+.gitignore
+.idea/
+.zcodeignore
+.zcode
+
+# Secrets and local configuration never enter the build (factor III)
+.env
+.env.*
+
+# Local build outputs, test artifacts and release records
+bin/
+releases/
+*.out
+coverage.*
+
+# Documentation and local planning notes
+docs/
+realisation_steps/
+*.md
+
+# Host-side tooling: images are built by the Dockerfile alone
+Makefile
+compose.yaml
+compose.replicas.yaml
+scripts/dev.ps1
+scripts/release.sh
+.golangci.yml
+
+# Tests are not part of the release binaries
+**/*_test.go
+
+# Dockerfiles themselves are not needed inside the images
+Dockerfile
+.dockerignore

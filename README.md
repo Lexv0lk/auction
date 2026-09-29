@@ -6,7 +6,7 @@ inside the server finishes auctions and records the result. Built as a single
 Go 1.27 binary on `net/http` with PostgreSQL.
 
 Development status and the implementation plan live in `realisation_steps/`
-(steps 01-12 are done); design documents live in `docs/`. Both directories are
+(steps 01-13 are done); design documents live in `docs/`. Both directories are
 kept locally and are not committed.
 
 ## Quick start
@@ -15,17 +15,63 @@ Requirements: Go 1.27.1, Docker with Compose, GNU make, golangci-lint 2.14.0
 (for `make check`).
 
 1. Copy `.env.example` to `.env` and review the values. Local port overrides
-   (`POSTGRES_PORT`, `TEST_POSTGRES_PORT`) and all passwords live there.
-   `CSRF_SECRET` must be an independently generated value of at least 32
-   characters (for example `python -c "import secrets; print(secrets.token_urlsafe(48))"`).
+   (`POSTGRES_PORT`, `TEST_POSTGRES_PORT`, `HTTP_PORT`) and all passwords live
+   there. `CSRF_SECRET` must be an independently generated value of at least
+   32 characters (for example `python -c "import secrets; print(secrets.token_urlsafe(48))"`).
 2. `make migrate` — apply the SQL migrations to the `db` compose service.
 3. `make seed` — fill the database with the demo data set (see below).
-4. `make run` — start the web server on `HTTP_ADDR`; `GET /livez` and
-   `GET /readyz` return 200, `GET /metrics` exports Prometheus metrics.
+4. `make run` — start the web server from the working tree on `HTTP_ADDR`;
+   `GET /livez` and `GET /readyz` return 200, `GET /metrics` exports
+   Prometheus metrics.
 
 `make check` runs the full verification: build, formatting, linter, vet and
 tests; `make test-integration` additionally runs the integration-tagged tests
 against a real PostgreSQL (`db-test`).
+
+## Container release
+
+The release artifacts are built by the multi-stage `Dockerfile`: the
+application image (`auction/server`), the one-off seed command image
+(`auction/seed`) and the migration container (`auction/migrations`, the
+pinned `migrate` tool plus the SQL of the same commit). Base images, Go and
+the PostgreSQL/migrate versions are pinned by exact versions and digests.
+The server runs unprivileged, without subcommands, and handles SIGTERM
+itself (the Go process is PID 1); templates, static assets and time zone
+data are embedded in the binary.
+
+The release flow separates build, release and run (12-factor V):
+
+```sh
+make release       # build the images and record releases/<RELEASE_ID>.json
+make migrate       # apply the SQL of the same commit (migration image)
+make seed          # optional demo data (seed image)
+make up            # start PostgreSQL and the server with --no-build
+make down          # stop the services; the database volume is kept
+```
+
+`make release` binds the commit, both image ids, the seed artifact checksum
+and its Go version, the schema version and a fingerprint of the deployment
+configuration into one unique `RELEASE_ID`; changing any of them — the
+configuration included — produces a new release id. Secret values stay
+outside Git and images: only the checksum of the env file is recorded.
+Nothing compiles or downloads at run time; a failed migration exits non-zero
+and the server then refuses to start against the wrong schema version
+(`/readyz` 503, exit 1).
+
+Two identical replicas (each with HTTP and its own background auction loop,
+sharing the database and the CSRF configuration) are started with:
+
+```sh
+make replicas      # db + server-1 + server-2 on unique host ports
+make replicas-down # remove the replicas, keep the database
+```
+
+Every application setting reaches the containers as an independent
+environment variable (`compose.yaml`); inside the containers the application
+always listens on port 8080, so the published host port (`HTTP_PORT`,
+`REPLICA1_PORT`, `REPLICA2_PORT`) is the configuration point. See
+`releases/README.md` for the manifest format and the full 12-factor audit in
+`docs/12factor.md` (both local working notes).
 
 ## Logging in
 
@@ -184,13 +230,40 @@ The script prints one summary line with created/skipped counts and exits with
 a non-zero code on any error, rolling back the whole run (a partial fill never
 stays in the database).
 
+## 12-factor summary
+
+The methodology (https://12factor.net) is enforced across the whole project;
+the detailed audit with per-factor evidence, verification commands, statuses
+and deviations lives in `docs/12factor.md` (local working notes):
+
+| Factor | How this project complies |
+|---|---|
+| I. Codebase | One Git repository, one Go module; the images, SQL and seed script are built from one commit recorded in the release manifest. |
+| II. Dependencies | `go.mod`/`go.sum` pin everything; the image build downloads dependencies in an isolated stage; tools and base images are pinned by exact versions and digests. |
+| III. Config | Every deployment-specific value (including secrets) arrives as an independent environment variable; no values in code, no secret defaults, `.env` is local only. |
+| IV. Backing services | PostgreSQL is an attachable resource addressed by `DATABASE_URL`; the same image serves any prepared compatible database. |
+| V. Build, release, run | `make release` builds immutable artifacts and binds them with the configuration into a unique release id; `make up` runs the built images with `--no-build`. |
+| VI. Processes | Sessions, lots, bids and results live only in PostgreSQL; processes are replaceable and share nothing. |
+| VII. Port binding | The built-in `net/http` server listens on the configured port (8080 in containers); no external web server. |
+| VIII. Concurrency | Identical `server` replicas scale horizontally; each runs HTTP plus the auction-completion loop; coordination happens only in the database. |
+| IX. Disposability | Fast startup, SIGTERM handled with a bounded budget, `/readyz` turns 503 when draining, SIGKILL loses nothing. |
+| X. Dev/prod parity | Development, tests and the container release run the same PostgreSQL version and the same application image. |
+| XI. Logs | JSON events on stdout only; no log files in the process, routing/storage belong to the environment. |
+| XII. Admin processes | Migrations and seed are one-off containers of the same release, run separately with the target database configuration. |
+
 ## Make targets
 
 | Target                    | Purpose                                            |
 |---------------------------|----------------------------------------------------|
 | `make build`              | Build `bin/server`                                 |
-| `make run`                | Start the web server (loads `.env` on Windows)     |
-| `make migrate`            | Apply `migrations/` through the migration container|
-| `make seed`               | Fill the database with demo accounts and drafts    |
+| `make run`                | Start the web server from the working tree (loads `.env` on Windows) |
+| `make images`             | Build the server, seed and migrations images       |
+| `make release`            | Build the images and record the release manifest   |
+| `make migrate`            | Apply `migrations/` through the migration image    |
+| `make seed`               | Fill the database with demo accounts and drafts (seed image) |
+| `make up` / `make down`   | Start/stop the compose services (`--no-build`, data is kept) |
+| `make replicas`           | Start two identical server replicas (unique host ports) |
+| `make replicas-down`      | Stop and remove the replicas (the database stays up) |
+| `make server-logs`        | Follow the server container logs                   |
 | `make check`              | Build, format-check, lint, vet, test               |
 | `make test-integration`   | Integration tests against `db-test`                |
