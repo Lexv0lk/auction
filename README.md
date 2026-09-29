@@ -6,7 +6,7 @@ inside the server finishes auctions and records the result. Built as a single
 Go 1.27 binary on `net/http` with PostgreSQL.
 
 Development status and the implementation plan live in `realisation_steps/`
-(steps 01-05 are done); design documents live in `docs/`. Both directories are
+(steps 01-06 are done); design documents live in `docs/`. Both directories are
 kept locally and are not committed.
 
 ## Quick start
@@ -36,6 +36,18 @@ the bcrypt hashes created by the seed; the browser receives only an opaque
 random token in an `HttpOnly` cookie, while the database stores its SHA-256
 hash. Changing requests (login, logout, and later all forms) are protected by
 CSRF tokens signed with the shared `CSRF_SECRET`.
+
+## Managing categories
+
+Administrators manage the category reference data at `/admin/categories`
+(link in the navigation): create, rename through the per-category edit form,
+and delete unused categories. Names are trimmed, must be 1-120 characters,
+and are unique case-insensitively; duplicates and invalid names come back as
+form errors with the entered value preserved. A category referenced by at
+least one lot is never deleted — the request is refused with a conflict
+message, and the foreign key on `lots.category_id` is the final guard even
+against a lot created concurrently with the deletion. All category operations
+require the admin session and a CSRF token.
 
 ## Demo accounts and demo data
 

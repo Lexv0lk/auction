@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Lexv0lk/auction/internal/auth"
+	"github.com/Lexv0lk/auction/internal/category"
 )
 
 // fakeAuthenticator records how the HTTP layer drives the session service.
@@ -56,6 +57,64 @@ func (r *httpResponse) Cookies() []*http.Cookie {
 	return r.cookies
 }
 
+// fakeCategories records how the HTTP layer drives the category service.
+type fakeCategories struct {
+	listFunc   func(ctx context.Context) ([]category.Category, error)
+	createFunc func(ctx context.Context, name string) (category.Category, error)
+	getFunc    func(ctx context.Context, id int64) (category.Category, error)
+	renameFunc func(ctx context.Context, id int64, name string) (category.Category, error)
+	deleteFunc func(ctx context.Context, id int64) error
+
+	listCalls   int
+	createCalls int
+	renameCalls int
+	deleteCalls int
+}
+
+func (f *fakeCategories) List(ctx context.Context) ([]category.Category, error) {
+	f.listCalls++
+	if f.listFunc == nil {
+		return nil, nil
+	}
+
+	return f.listFunc(ctx)
+}
+
+func (f *fakeCategories) Create(ctx context.Context, name string) (category.Category, error) {
+	f.createCalls++
+	if f.createFunc == nil {
+		return category.Category{}, nil
+	}
+
+	return f.createFunc(ctx, name)
+}
+
+func (f *fakeCategories) Get(ctx context.Context, id int64) (category.Category, error) {
+	if f.getFunc == nil {
+		return category.Category{}, nil
+	}
+
+	return f.getFunc(ctx, id)
+}
+
+func (f *fakeCategories) Rename(ctx context.Context, id int64, name string) (category.Category, error) {
+	f.renameCalls++
+	if f.renameFunc == nil {
+		return category.Category{}, nil
+	}
+
+	return f.renameFunc(ctx, id, name)
+}
+
+func (f *fakeCategories) Delete(ctx context.Context, id int64) error {
+	f.deleteCalls++
+	if f.deleteFunc == nil {
+		return nil
+	}
+
+	return f.deleteFunc(ctx, id)
+}
+
 var testCSRFKey = []byte("unit-test-csrf-key-unit-test-csrf-")
 
 func testConfig() Config {
@@ -75,10 +134,14 @@ func mustParsePages(t *testing.T) map[string]*template.Template {
 	return pages
 }
 
-func newTestHandler(t *testing.T, authenticator Authenticator, config Config) http.Handler {
+func newTestHandler(t *testing.T, authenticator Authenticator, config Config, categories ...Categories) http.Handler {
 	t.Helper()
 
-	handler, err := NewHandler(discardLogger(), authenticator, config)
+	service := Categories(&fakeCategories{})
+	if len(categories) > 0 {
+		service = categories[0]
+	}
+	handler, err := NewHandler(discardLogger(), authenticator, service, config)
 	require.NoError(t, err)
 
 	return handler
@@ -86,10 +149,11 @@ func newTestHandler(t *testing.T, authenticator Authenticator, config Config) ht
 
 // newTestServer runs the full handler stack behind a real HTTP server with a
 // cookie jar, mirroring how a browser accumulates CSRF and session cookies.
-func newTestServer(t *testing.T, authenticator Authenticator, config Config) (*httptest.Server, *http.Client) {
+// The category service defaults to a stub; category tests pass their own.
+func newTestServer(t *testing.T, authenticator Authenticator, config Config, categories ...Categories) (*httptest.Server, *http.Client) {
 	t.Helper()
 
-	server := httptest.NewServer(newTestHandler(t, authenticator, config))
+	server := httptest.NewServer(newTestHandler(t, authenticator, config, categories...))
 	t.Cleanup(server.Close)
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err)

@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Lexv0lk/auction/internal/auth"
+	"github.com/Lexv0lk/auction/internal/category"
 	"github.com/Lexv0lk/auction/internal/password"
 	"github.com/Lexv0lk/auction/internal/testutil"
 )
@@ -36,7 +37,7 @@ func TestLoginFlowAgainstPostgreSQL(t *testing.T) {
 		"INSERT INTO users (login, password_hash, role) VALUES ('flow-admin', $1, 'admin') RETURNING id",
 		hash).Scan(&userID))
 
-	handler, err := NewHandler(discardLogger(), auth.NewService(pool), testConfig())
+	handler, err := NewHandler(discardLogger(), auth.NewService(pool), category.NewService(pool), testConfig())
 	require.NoError(t, err)
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)

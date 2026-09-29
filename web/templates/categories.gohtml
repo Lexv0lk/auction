@@ -1,0 +1,27 @@
+{{define "content"}}
+<h1>Категории</h1>
+<form method="post" action="/admin/categories">
+  {{.CSRFToken}}
+  <p><label for="name">Новая категория</label><br>
+  <input type="text" id="name" name="name" value="{{.Name}}" maxlength="120" required autofocus>
+  <button type="submit">Создать</button></p>
+  {{if .FieldError}}<p class="field-error">{{.FieldError}}</p>{{end}}
+</form>
+{{if .Categories}}
+<table class="categories">
+  <tbody>
+  {{range .Categories}}
+  <tr>
+    <td>{{.Name}}</td>
+    <td class="actions">
+      <a href="/admin/categories/{{.ID}}/edit">Изменить</a>
+      <form class="inline" method="post" action="/admin/categories/{{.ID}}/delete">{{$.CSRFToken}}<button type="submit">Удалить</button></form>
+    </td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+{{else}}
+<p>Категорий пока нет.</p>
+{{end}}
+{{end}}

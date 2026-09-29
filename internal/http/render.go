@@ -7,6 +7,7 @@ import (
 	"github.com/gorilla/csrf"
 
 	"github.com/Lexv0lk/auction/internal/auth"
+	"github.com/Lexv0lk/auction/internal/category"
 	"github.com/Lexv0lk/auction/web"
 )
 
@@ -29,6 +30,22 @@ type homeData struct {
 	pageData
 }
 
+type categoriesData struct {
+	pageData
+	Categories []category.Category
+	// Name keeps the entered value of a failed create; FieldError explains
+	// why the form came back.
+	Name       string
+	FieldError string
+}
+
+type categoryEditData struct {
+	pageData
+	Category   category.Category
+	Name       string
+	FieldError string
+}
+
 type errorData struct {
 	pageData
 	Status    int
@@ -47,9 +64,11 @@ var roleLabels = map[string]string{
 // together with exactly that page's content block.
 func parsePageTemplates() (map[string]*template.Template, error) {
 	pages := map[string][]string{
-		"error.html": {"templates/layout.gohtml", "templates/error.gohtml"},
-		"login.html": {"templates/layout.gohtml", "templates/login.gohtml"},
-		"home.html":  {"templates/layout.gohtml", "templates/home.gohtml"},
+		"error.html":         {"templates/layout.gohtml", "templates/error.gohtml"},
+		"login.html":         {"templates/layout.gohtml", "templates/login.gohtml"},
+		"home.html":          {"templates/layout.gohtml", "templates/home.gohtml"},
+		"categories.html":    {"templates/layout.gohtml", "templates/categories.gohtml"},
+		"category_edit.html": {"templates/layout.gohtml", "templates/category_edit.gohtml"},
 	}
 	parsed := make(map[string]*template.Template, len(pages))
 	for name, files := range pages {

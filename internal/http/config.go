@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Lexv0lk/auction/internal/auth"
+	"github.com/Lexv0lk/auction/internal/category"
 )
 
 // Config carries the authentication-related server settings. The CSRF key is
@@ -25,6 +26,15 @@ type Authenticator interface {
 	Login(ctx context.Context, login, password string, ttl time.Duration) (token string, user auth.User, err error)
 	User(ctx context.Context, token string) (auth.User, error)
 	Logout(ctx context.Context, token string) error
+}
+
+// Categories is the reference-data contract the admin handlers depend on.
+type Categories interface {
+	List(ctx context.Context) ([]category.Category, error)
+	Create(ctx context.Context, name string) (category.Category, error)
+	Get(ctx context.Context, id int64) (category.Category, error)
+	Rename(ctx context.Context, id int64, name string) (category.Category, error)
+	Delete(ctx context.Context, id int64) error
 }
 
 // NewCSRFKey derives the CSRF signing key from the configured secret. Hashing

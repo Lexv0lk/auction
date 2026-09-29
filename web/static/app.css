@@ -4,3 +4,8 @@ small { color: #626b76; }
 .site-nav .who { margin-left: auto; }
 .site-nav .inline { display: inline; }
 .error { border: 1px solid #c0392b; background: #fdf0ee; color: #7c2d1f; padding: 0.5rem 0.75rem; border-radius: 4px; }
+.field-error { color: #c0392b; }
+table.categories { border-collapse: collapse; width: 100%; }
+table.categories td { border-bottom: 1px solid #d8dde3; padding: 0.4rem 0.5rem; }
+table.categories .actions { text-align: right; white-space: nowrap; }
+table.categories .actions .inline { display: inline; margin-left: 0.75rem; }

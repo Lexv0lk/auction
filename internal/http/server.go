@@ -8,20 +8,22 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/Lexv0lk/auction/internal/auth"
 	"github.com/Lexv0lk/auction/web"
 )
 
 // Handler holds the shared HTTP presentation dependencies.
 type Handler struct {
-	logger *slog.Logger
-	auth   Authenticator
-	config Config
-	pages  map[string]*template.Template
-	static http.Handler
+	logger     *slog.Logger
+	auth       Authenticator
+	categories Categories
+	config     Config
+	pages      map[string]*template.Template
+	static     http.Handler
 }
 
 // NewHandler loads embedded assets and constructs the HTTP router.
-func NewHandler(logger *slog.Logger, authenticator Authenticator, config Config) (http.Handler, error) {
+func NewHandler(logger *slog.Logger, authenticator Authenticator, categories Categories, config Config) (http.Handler, error) {
 	pages, err := parsePageTemplates()
 	if err != nil {
 		return nil, fmt.Errorf("load page templates: %w", err)
@@ -32,7 +34,7 @@ func NewHandler(logger *slog.Logger, authenticator Authenticator, config Config)
 		return nil, fmt.Errorf("load static files: %w", err)
 	}
 
-	h := &Handler{logger: logger, auth: authenticator, config: config, pages: pages, static: http.FileServer(http.FS(staticFiles))}
+	h := &Handler{logger: logger, auth: authenticator, categories: categories, config: config, pages: pages, static: http.FileServer(http.FS(staticFiles))}
 	mux := http.NewServeMux()
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", h.static))
@@ -40,6 +42,19 @@ func NewHandler(logger *slog.Logger, authenticator Authenticator, config Config)
 	mux.HandleFunc("POST /login", h.loginSubmit)
 	mux.Handle("POST /logout", h.requireUser(http.HandlerFunc(h.logoutSubmit)))
 	mux.Handle("GET /{$}", h.requireUser(http.HandlerFunc(h.homePage)))
+
+	// The reference data is an administrative area: every route, read or
+	// write, checks the session and then the admin role, so a direct handler
+	// call is guarded exactly like a routed request.
+	adminOnly := func(next http.Handler) http.Handler {
+		return h.requireUser(h.requireRole(auth.RoleAdmin, next))
+	}
+	mux.Handle("GET /admin/categories", adminOnly(http.HandlerFunc(h.categoriesPage)))
+	mux.Handle("POST /admin/categories", adminOnly(http.HandlerFunc(h.categoryCreate)))
+	mux.Handle("GET /admin/categories/{id}/edit", adminOnly(http.HandlerFunc(h.categoryEditPage)))
+	mux.Handle("POST /admin/categories/{id}", adminOnly(http.HandlerFunc(h.categoryRename)))
+	mux.Handle("POST /admin/categories/{id}/delete", adminOnly(http.HandlerFunc(h.categoryDelete)))
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		h.Error(w, r, http.StatusNotFound, "not_found", "Страница не найдена")
 	})

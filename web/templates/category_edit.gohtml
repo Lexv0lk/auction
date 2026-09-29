@@ -1,0 +1,11 @@
+{{define "content"}}
+<h1>Изменение категории</h1>
+<form method="post" action="/admin/categories/{{.Category.ID}}">
+  {{.CSRFToken}}
+  <p><label for="name">Название</label><br>
+  <input type="text" id="name" name="name" value="{{.Name}}" maxlength="120" required autofocus></p>
+  {{if .FieldError}}<p class="field-error">{{.FieldError}}</p>{{end}}
+  <button type="submit">Сохранить</button>
+</form>
+<p><a href="/admin/categories">Назад к списку</a></p>
+{{end}}
