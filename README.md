@@ -6,7 +6,7 @@ inside the server finishes auctions and records the result. Built as a single
 Go 1.27 binary on `net/http` with PostgreSQL.
 
 Development status and the implementation plan live in `realisation_steps/`
-(steps 01-06 are done); design documents live in `docs/`. Both directories are
+(steps 01-07 are done); design documents live in `docs/`. Both directories are
 kept locally and are not committed.
 
 ## Quick start
@@ -48,6 +48,36 @@ least one lot is never deleted — the request is refused with a conflict
 message, and the foreign key on `lots.category_id` is the final guard even
 against a lot created concurrently with the deletion. All category operations
 require the admin session and a CSRF token.
+
+## Preparing and publishing lots
+
+Administrators manage auction lots at `/admin/lots`: the list shows every
+lot of every status (draft, running, finished) with its category, start
+price and deadline, and the edit/publish/delete actions are offered for
+drafts only. «Новый лот» opens the form with a title (≤200 characters), a
+description (≤5000 characters), a category picked from the reference data, a
+positive integer start price and a deadline. New lots are always drafts: the
+form never carries `status`, `finished_at` or `winning_bid_id`.
+
+The deadline is a `datetime-local` input plus an explicit time-zone select
+(UTC by default and a fixed list of IANA zones): the browser submits a
+zone-less wall time, so the server interprets it only in the explicitly
+chosen zone and stores the absolute instant as `TIMESTAMPTZ`. Every page
+displays deadlines in UTC and says so.
+
+Publishing (`POST /admin/lots/{id}/publish`) opens the bidding: inside one
+transaction the lot row is locked (`SELECT … FOR UPDATE`), the draft status
+and the stored fields are re-checked, the deadline must be in the future by
+the database clock (`now()` of the same transaction), and only then the
+status becomes `active`. A past deadline is refused (422) and the draft stays
+editable. After publication the conditions are immutable: editing, deleting
+and republishing an active or finished lot are conflicts (409), and a
+republished lot can never extend its deadline. Concurrent edit and publish
+resolve into one consistent version through the row lock: the edit either
+lands entirely in the published conditions or is refused with 409. Missing
+lots answer 404, invalid fields 422 with the entered values preserved; all
+lot operations require the admin session and a CSRF token, and successful
+changes redirect (303) so a page reload never resubmits the form.
 
 ## Demo accounts and demo data
 

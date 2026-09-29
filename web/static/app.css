@@ -9,3 +9,9 @@ table.categories { border-collapse: collapse; width: 100%; }
 table.categories td { border-bottom: 1px solid #d8dde3; padding: 0.4rem 0.5rem; }
 table.categories .actions { text-align: right; white-space: nowrap; }
 table.categories .actions .inline { display: inline; margin-left: 0.75rem; }
+
+table.lots { border-collapse: collapse; width: 100%; }
+table.lots th { text-align: left; border-bottom: 2px solid #d8dde3; padding: 0.4rem 0.5rem; font-weight: 600; }
+table.lots td { border-bottom: 1px solid #d8dde3; padding: 0.4rem 0.5rem; }
+table.lots .actions { text-align: right; white-space: nowrap; }
+table.lots .actions .inline { display: inline; margin-left: 0.75rem; }

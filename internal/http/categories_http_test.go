@@ -20,7 +20,7 @@ var errCategoriesDown = errors.New("categories database down")
 
 // loggedInClient returns a server whose jar already holds a session of the
 // given account role.
-func loggedInClient(t *testing.T, user auth.User, categories Categories) (*httptest.Server, *http.Client) {
+func loggedInClient(t *testing.T, user auth.User, deps ...any) (*httptest.Server, *http.Client) {
 	t.Helper()
 
 	sessionToken := strings.Repeat("f", 64)
@@ -33,16 +33,16 @@ func loggedInClient(t *testing.T, user auth.User, categories Categories) (*httpt
 			return auth.User{}, auth.ErrNoSession
 		},
 	}
-	server, client := newTestServer(t, authenticator, testConfig(), categories)
+	server, client := newTestServer(t, authenticator, testConfig(), deps...)
 	setSessionCookie(t, client, server.URL, sessionToken)
 
 	return server, client
 }
 
-func adminClient(t *testing.T, categories Categories) (*httptest.Server, *http.Client) {
+func adminClient(t *testing.T, deps ...any) (*httptest.Server, *http.Client) {
 	t.Helper()
 
-	return loggedInClient(t, auth.User{ID: 1, Login: "demo-admin", Role: auth.RoleAdmin}, categories)
+	return loggedInClient(t, auth.User{ID: 1, Login: "demo-admin", Role: auth.RoleAdmin}, deps...)
 }
 
 func pageCSRFToken(t *testing.T, client *http.Client, target string) string {

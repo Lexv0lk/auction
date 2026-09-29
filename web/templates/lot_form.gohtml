@@ -1,0 +1,36 @@
+{{define "content"}}
+<h1>{{.Heading}}</h1>
+<form method="post" action="{{.FormAction}}">
+  {{.CSRFToken}}
+  <p><label for="title">Название</label><br>
+  <input type="text" id="title" name="title" value="{{.Title}}" maxlength="200" required autofocus></p>
+  {{with index .FieldErrors "title"}}<p class="field-error">{{.}}</p>{{end}}
+
+  <p><label for="description">Описание</label><br>
+  <textarea id="description" name="description" maxlength="5000" required rows="5" cols="60">{{.Description}}</textarea></p>
+  {{with index .FieldErrors "description"}}<p class="field-error">{{.}}</p>{{end}}
+
+  <p><label for="category_id">Категория</label><br>
+  <select id="category_id" name="category_id" required>
+    <option value="">— выберите категорию —</option>
+    {{range .Categories}}<option value="{{.ID}}"{{if eq .ID $.CategoryID}} selected{{end}}>{{.Name}}</option>{{end}}
+  </select></p>
+  {{with index .FieldErrors "category_id"}}<p class="field-error">{{.}}</p>{{end}}
+
+  <p><label for="start_price">Стартовая цена</label><br>
+  <input type="number" id="start_price" name="start_price" value="{{.Price}}" min="1" step="1" required></p>
+  {{with index .FieldErrors "start_price"}}<p class="field-error">{{.}}</p>{{end}}
+
+  <p><label for="ends_at">Дедлайн</label><br>
+  <input type="datetime-local" id="ends_at" name="ends_at" value="{{.EndsAt}}" required>
+  <select id="ends_at_tz" name="ends_at_tz" aria-label="Часовой пояс дедлайна">
+    {{range .TimeZones}}<option value="{{.}}"{{if eq . $.EndsAtTZ}} selected{{end}}>{{.}}</option>{{end}}
+  </select><br>
+  <small>Дата и время вводятся в выбранном часовом поясе; хранится абсолютное время, на страницах оно отображается в UTC.</small></p>
+  {{with index .FieldErrors "ends_at"}}<p class="field-error">{{.}}</p>{{end}}
+  {{with index .FieldErrors "ends_at_tz"}}<p class="field-error">{{.}}</p>{{end}}
+
+  <button type="submit">Сохранить</button>
+</form>
+<p><a href="/admin/lots">Назад к списку</a></p>
+{{end}}

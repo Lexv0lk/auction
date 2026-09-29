@@ -14,6 +14,7 @@ import (
 	"github.com/Lexv0lk/auction/internal/category"
 	"github.com/Lexv0lk/auction/internal/config"
 	httpapp "github.com/Lexv0lk/auction/internal/http"
+	"github.com/Lexv0lk/auction/internal/lot"
 	"github.com/Lexv0lk/auction/internal/postgres"
 )
 
@@ -34,7 +35,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return err
 	}
 
-	handler, err := httpapp.NewHandler(logger, auth.NewService(pool), category.NewService(pool), httpapp.Config{
+	handler, err := httpapp.NewHandler(logger, auth.NewService(pool), category.NewService(pool), lot.NewService(pool), httpapp.Config{
 		SessionTTL:   cfg.Session.TTL,
 		CookieSecure: cfg.Session.CookieSecure,
 		CSRFKey:      httpapp.NewCSRFKey(cfg.Session.CSRFSecret),

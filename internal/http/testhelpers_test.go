@@ -19,6 +19,7 @@ import (
 
 	"github.com/Lexv0lk/auction/internal/auth"
 	"github.com/Lexv0lk/auction/internal/category"
+	"github.com/Lexv0lk/auction/internal/lot"
 )
 
 // fakeAuthenticator records how the HTTP layer drives the session service.
@@ -115,6 +116,84 @@ func (f *fakeCategories) Delete(ctx context.Context, id int64) error {
 	return f.deleteFunc(ctx, id)
 }
 
+// fakeLots records how the HTTP layer drives the lot service.
+type fakeLots struct {
+	listFunc    func(ctx context.Context) ([]lot.Lot, error)
+	getFunc     func(ctx context.Context, id int64) (lot.Lot, error)
+	createFunc  func(ctx context.Context, input lot.Input) (lot.Lot, error)
+	updateFunc  func(ctx context.Context, id int64, input lot.Input) (lot.Lot, error)
+	deleteFunc  func(ctx context.Context, id int64) error
+	publishFunc func(ctx context.Context, id int64) (lot.Lot, error)
+
+	listCalls    int
+	createCalls  int
+	updateCalls  int
+	deleteCalls  int
+	publishCalls int
+
+	lastInput lot.Input
+	lastID    int64
+}
+
+func (f *fakeLots) List(ctx context.Context) ([]lot.Lot, error) {
+	f.listCalls++
+	if f.listFunc == nil {
+		return nil, nil
+	}
+
+	return f.listFunc(ctx)
+}
+
+func (f *fakeLots) Get(ctx context.Context, id int64) (lot.Lot, error) {
+	f.lastID = id
+	if f.getFunc == nil {
+		return lot.Lot{}, nil
+	}
+
+	return f.getFunc(ctx, id)
+}
+
+func (f *fakeLots) Create(ctx context.Context, input lot.Input) (lot.Lot, error) {
+	f.createCalls++
+	f.lastInput = input
+	if f.createFunc == nil {
+		return lot.Lot{}, nil
+	}
+
+	return f.createFunc(ctx, input)
+}
+
+func (f *fakeLots) Update(ctx context.Context, id int64, input lot.Input) (lot.Lot, error) {
+	f.updateCalls++
+	f.lastID = id
+	f.lastInput = input
+	if f.updateFunc == nil {
+		return lot.Lot{}, nil
+	}
+
+	return f.updateFunc(ctx, id, input)
+}
+
+func (f *fakeLots) Delete(ctx context.Context, id int64) error {
+	f.deleteCalls++
+	f.lastID = id
+	if f.deleteFunc == nil {
+		return nil
+	}
+
+	return f.deleteFunc(ctx, id)
+}
+
+func (f *fakeLots) Publish(ctx context.Context, id int64) (lot.Lot, error) {
+	f.publishCalls++
+	f.lastID = id
+	if f.publishFunc == nil {
+		return lot.Lot{}, nil
+	}
+
+	return f.publishFunc(ctx, id)
+}
+
 var testCSRFKey = []byte("unit-test-csrf-key-unit-test-csrf-")
 
 func testConfig() Config {
@@ -134,14 +213,23 @@ func mustParsePages(t *testing.T) map[string]*template.Template {
 	return pages
 }
 
-func newTestHandler(t *testing.T, authenticator Authenticator, config Config, categories ...Categories) http.Handler {
+// newTestHandler builds the full handler stack with fake services; a test
+// substitutes its own dependency by passing it as a dependency argument
+// (anything unrecognized is ignored).
+func newTestHandler(t *testing.T, authenticator Authenticator, config Config, deps ...any) http.Handler {
 	t.Helper()
 
-	service := Categories(&fakeCategories{})
-	if len(categories) > 0 {
-		service = categories[0]
+	var categories Categories = &fakeCategories{}
+	var lots Lots = &fakeLots{}
+	for _, dep := range deps {
+		switch dep := dep.(type) {
+		case Categories:
+			categories = dep
+		case Lots:
+			lots = dep
+		}
 	}
-	handler, err := NewHandler(discardLogger(), authenticator, service, config)
+	handler, err := NewHandler(discardLogger(), authenticator, categories, lots, config)
 	require.NoError(t, err)
 
 	return handler
@@ -149,11 +237,11 @@ func newTestHandler(t *testing.T, authenticator Authenticator, config Config, ca
 
 // newTestServer runs the full handler stack behind a real HTTP server with a
 // cookie jar, mirroring how a browser accumulates CSRF and session cookies.
-// The category service defaults to a stub; category tests pass their own.
-func newTestServer(t *testing.T, authenticator Authenticator, config Config, categories ...Categories) (*httptest.Server, *http.Client) {
+// The services default to stubs; tests pass their own fakes as dependencies.
+func newTestServer(t *testing.T, authenticator Authenticator, config Config, deps ...any) (*httptest.Server, *http.Client) {
 	t.Helper()
 
-	server := httptest.NewServer(newTestHandler(t, authenticator, config, categories...))
+	server := httptest.NewServer(newTestHandler(t, authenticator, config, deps...))
 	t.Cleanup(server.Close)
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err)

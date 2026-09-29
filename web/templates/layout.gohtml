@@ -5,7 +5,7 @@
 <header><nav class="site-nav">
   <a class="brand" href="/">Учебный аукцион</a>
   {{if .User}}
-  {{if eq .User.Role "admin"}}<a href="/admin/categories">Категории</a>{{end}}
+  {{if eq .User.Role "admin"}}<a href="/admin/lots">Лоты</a><a href="/admin/categories">Категории</a>{{end}}
   <span class="who">{{.User.Login}} <small>({{.RoleLabel}})</small></span>
   <form class="inline" method="post" action="/logout">{{.CSRFToken}}<button type="submit">Выход</button></form>
   {{else}}

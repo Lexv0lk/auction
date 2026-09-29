@@ -1,0 +1,31 @@
+{{define "content"}}
+<h1>Лоты</h1>
+<p><a href="/admin/lots/new">Новый лот</a></p>
+{{if .Lots}}
+<table class="lots">
+  <thead>
+  <tr><th>Название</th><th>Категория</th><th>Стартовая цена</th><th>Статус</th><th>Дедлайн</th><th></th></tr>
+  </thead>
+  <tbody>
+  {{range .Lots}}
+  <tr>
+    <td>{{.Title}}</td>
+    <td>{{.CategoryName}}</td>
+    <td>{{.StartPrice}}</td>
+    <td>{{statusLabel .Status}}</td>
+    <td>{{fmtUTC .EndsAt}}</td>
+    <td class="actions">
+      {{if eq .Status "draft"}}
+      <a href="/admin/lots/{{.ID}}/edit">Изменить</a>
+      <form class="inline" method="post" action="/admin/lots/{{.ID}}/publish">{{$.CSRFToken}}<button type="submit">Опубликовать</button></form>
+      <form class="inline" method="post" action="/admin/lots/{{.ID}}/delete">{{$.CSRFToken}}<button type="submit">Удалить</button></form>
+      {{else}}—{{end}}
+    </td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+{{else}}
+<p>Лотов пока нет.</p>
+{{end}}
+{{end}}

@@ -17,13 +17,14 @@ type Handler struct {
 	logger     *slog.Logger
 	auth       Authenticator
 	categories Categories
+	lots       Lots
 	config     Config
 	pages      map[string]*template.Template
 	static     http.Handler
 }
 
 // NewHandler loads embedded assets and constructs the HTTP router.
-func NewHandler(logger *slog.Logger, authenticator Authenticator, categories Categories, config Config) (http.Handler, error) {
+func NewHandler(logger *slog.Logger, authenticator Authenticator, categories Categories, lots Lots, config Config) (http.Handler, error) {
 	pages, err := parsePageTemplates()
 	if err != nil {
 		return nil, fmt.Errorf("load page templates: %w", err)
@@ -34,7 +35,7 @@ func NewHandler(logger *slog.Logger, authenticator Authenticator, categories Cat
 		return nil, fmt.Errorf("load static files: %w", err)
 	}
 
-	h := &Handler{logger: logger, auth: authenticator, categories: categories, config: config, pages: pages, static: http.FileServer(http.FS(staticFiles))}
+	h := &Handler{logger: logger, auth: authenticator, categories: categories, lots: lots, config: config, pages: pages, static: http.FileServer(http.FS(staticFiles))}
 	mux := http.NewServeMux()
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", h.static))
@@ -45,7 +46,8 @@ func NewHandler(logger *slog.Logger, authenticator Authenticator, categories Cat
 
 	// The reference data is an administrative area: every route, read or
 	// write, checks the session and then the admin role, so a direct handler
-	// call is guarded exactly like a routed request.
+	// call is guarded exactly like a routed request. The lot routes follow
+	// the same rule.
 	adminOnly := func(next http.Handler) http.Handler {
 		return h.requireUser(h.requireRole(auth.RoleAdmin, next))
 	}
@@ -54,6 +56,14 @@ func NewHandler(logger *slog.Logger, authenticator Authenticator, categories Cat
 	mux.Handle("GET /admin/categories/{id}/edit", adminOnly(http.HandlerFunc(h.categoryEditPage)))
 	mux.Handle("POST /admin/categories/{id}", adminOnly(http.HandlerFunc(h.categoryRename)))
 	mux.Handle("POST /admin/categories/{id}/delete", adminOnly(http.HandlerFunc(h.categoryDelete)))
+
+	mux.Handle("GET /admin/lots", adminOnly(http.HandlerFunc(h.lotsPage)))
+	mux.Handle("GET /admin/lots/new", adminOnly(http.HandlerFunc(h.lotNewPage)))
+	mux.Handle("POST /admin/lots", adminOnly(http.HandlerFunc(h.lotCreate)))
+	mux.Handle("GET /admin/lots/{id}/edit", adminOnly(http.HandlerFunc(h.lotEditPage)))
+	mux.Handle("POST /admin/lots/{id}", adminOnly(http.HandlerFunc(h.lotUpdate)))
+	mux.Handle("POST /admin/lots/{id}/delete", adminOnly(http.HandlerFunc(h.lotDelete)))
+	mux.Handle("POST /admin/lots/{id}/publish", adminOnly(http.HandlerFunc(h.lotPublish)))
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		h.Error(w, r, http.StatusNotFound, "not_found", "Страница не найдена")

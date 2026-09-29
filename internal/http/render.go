@@ -3,11 +3,13 @@ package httpapp
 import (
 	"html/template"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/csrf"
 
 	"github.com/Lexv0lk/auction/internal/auth"
 	"github.com/Lexv0lk/auction/internal/category"
+	"github.com/Lexv0lk/auction/internal/lot"
 	"github.com/Lexv0lk/auction/web"
 )
 
@@ -46,11 +48,37 @@ type categoryEditData struct {
 	FieldError string
 }
 
+type lotsData struct {
+	pageData
+	Lots []lot.Lot
+}
+
 type errorData struct {
 	pageData
 	Status    int
 	Message   string
 	RequestID string
+}
+
+// templateFuncs adds the presentation helpers shared by the pages: the lot
+// deadlines always display in UTC (the zone is part of the text), the status
+// labels are the user-visible names of the fixed lot statuses.
+var templateFuncs = template.FuncMap{
+	"fmtUTC": func(t time.Time) string {
+		return t.In(time.UTC).Format("02.01.2006 15:04") + " UTC"
+	},
+	"statusLabel": func(status string) string {
+		switch status {
+		case lot.StatusDraft:
+			return "черновик"
+		case lot.StatusActive:
+			return "торги идут"
+		case lot.StatusFinished:
+			return "торги завершены"
+		default:
+			return status
+		}
+	},
 }
 
 // roleLabels maps the fixed account roles to their user-visible names; an
@@ -69,10 +97,12 @@ func parsePageTemplates() (map[string]*template.Template, error) {
 		"home.html":          {"templates/layout.gohtml", "templates/home.gohtml"},
 		"categories.html":    {"templates/layout.gohtml", "templates/categories.gohtml"},
 		"category_edit.html": {"templates/layout.gohtml", "templates/category_edit.gohtml"},
+		"lots.html":          {"templates/layout.gohtml", "templates/lots.gohtml"},
+		"lot_form.html":      {"templates/layout.gohtml", "templates/lot_form.gohtml"},
 	}
 	parsed := make(map[string]*template.Template, len(pages))
 	for name, files := range pages {
-		t, err := template.New(name).ParseFS(web.Files, files...)
+		t, err := template.New(name).Funcs(templateFuncs).ParseFS(web.Files, files...)
 		if err != nil {
 			return nil, err
 		}

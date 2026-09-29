@@ -15,7 +15,7 @@ import (
 
 func TestLivezAndRequestLog(t *testing.T) {
 	var logs bytes.Buffer
-	h, err := NewHandler(slog.New(slog.NewJSONHandler(&logs, nil)), &fakeAuthenticator{}, &fakeCategories{}, testConfig())
+	h, err := NewHandler(slog.New(slog.NewJSONHandler(&logs, nil)), &fakeAuthenticator{}, &fakeCategories{}, &fakeLots{}, testConfig())
 	require.NoError(t, err)
 	r := httptest.NewRecorder()
 	h.ServeHTTP(r, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/livez", nil))
@@ -30,7 +30,7 @@ func TestLivezAndRequestLog(t *testing.T) {
 }
 
 func TestAPIErrorShape(t *testing.T) {
-	h, err := NewHandler(discardLogger(), &fakeAuthenticator{}, &fakeCategories{}, testConfig())
+	h, err := NewHandler(discardLogger(), &fakeAuthenticator{}, &fakeCategories{}, &fakeLots{}, testConfig())
 	require.NoError(t, err)
 	r := httptest.NewRecorder()
 	h.ServeHTTP(r, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/missing", nil))
