@@ -160,6 +160,23 @@ func TestPlaceBidRepeatAndConflict(t *testing.T) {
 	assert.Equal(t, first.ID, repeatAfter.ID)
 	assert.True(t, repeatAfter.Repeated)
 	assert.Equal(t, int64(2), countBids(t, ctx, pool, lotID), "the repeat does not add a record")
+
+	// The same holds while the lot is only past its deadline (the result is
+	// being determined): the recorded answer of the committed attempt stays
+	// available, and the result of the auction never changes through it.
+	_, err = pool.Exec(ctx, "UPDATE lots SET status = 'active', finished_at = NULL, ends_at = clock_timestamp() - interval '1 second' WHERE id = $1", lotID)
+	require.NoError(t, err)
+	repeatDue, err := service.PlaceBid(ctx, user, lotID, 100, key)
+	require.NoError(t, err)
+	assert.Equal(t, first.ID, repeatDue.ID)
+	assert.True(t, repeatDue.Repeated)
+	assert.Equal(t, int64(2), countBids(t, ctx, pool, lotID), "the repeat past the deadline does not add a record")
+
+	// A different amount on the same key stays a conflict past the deadline,
+	// and the stored result is untouched.
+	_, err = service.PlaceBid(ctx, user, lotID, 999, key)
+	assert.ErrorIs(t, err, ErrRequestKeyConflict)
+	assert.Equal(t, int64(2), countBids(t, ctx, pool, lotID))
 }
 
 func TestPlaceBidRejectsMissingDraftAndClosedLots(t *testing.T) {

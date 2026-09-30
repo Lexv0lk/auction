@@ -72,7 +72,7 @@ func TestProbesAndMetricsAgainstPostgreSQL(t *testing.T) {
 
 	resp, err = client.Get(server.URL + "/readyz") //nolint:noctx // a fixed local target with a timeout on the client
 	require.NoError(t, err)
-	body, err = io.ReadAll(resp.Body)
+	_, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 	assert.Equal(t, http.StatusOK, resp.StatusCode, "a migrated database answers ready")
@@ -126,7 +126,7 @@ func TestReadyzAnswersNotReadyOnUnreachableDatabase(t *testing.T) {
 	// The liveness probe stays independent: the process itself is alive.
 	resp, err = (&http.Client{Timeout: 5 * time.Second}).Get(server.URL + "/livez") //nolint:noctx // a fixed local target
 	require.NoError(t, err)
-	body, err = io.ReadAll(resp.Body)
+	_, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 	assert.Equal(t, http.StatusOK, resp.StatusCode)

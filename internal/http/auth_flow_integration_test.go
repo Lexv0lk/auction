@@ -91,7 +91,7 @@ func TestLoginFlowAgainstPostgreSQL(t *testing.T) {
 	anonymous, err := cookiejar.New(nil)
 	require.NoError(t, err)
 	anonymous.SetCookies(mustParseURL(t, server.URL), []*http.Cookie{
-		{Name: "auction_session", Value: strings.Repeat("9", 64)},
+		{Name: "auction_session", Value: strings.Repeat("9", 64)}, //nolint:gosec // a fabricated session cookie for the access-control check
 	})
 	stranger := &http.Client{
 		CheckRedirect: client.CheckRedirect,

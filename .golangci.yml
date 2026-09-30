@@ -26,6 +26,13 @@ linters:
         linters:
           - gosec
         text: "G101"
+      # The test helpers of every integration suite keep the testify-style
+      # signature (testing.T first, request context second); the production
+      # code always passes context first.
+      - path: _test\.go
+        linters:
+          - revive
+        text: "context-as-argument"
 
 formatters:
   enable:

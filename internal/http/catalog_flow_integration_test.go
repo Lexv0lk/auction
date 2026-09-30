@@ -266,7 +266,7 @@ func insertBid(t *testing.T, ctx context.Context, pool *pgxpool.Pool, lotID, use
 	err := pool.QueryRow(ctx,
 		"INSERT INTO bids (lot_id, user_id, amount, accepted_at, request_key)"+
 			" VALUES ($1, $2, $3, now() - make_interval(mins => $4), $5::uuid) RETURNING id",
-		lotID, userID, amount, minutesAgo, fmt.Sprintf("00000000-0000-4000-8000-%012x", uint64(amount)&0xffffffffffff)).
+		lotID, userID, amount, minutesAgo, fmt.Sprintf("00000000-0000-4000-8000-%012x", uint64(amount)&0xffffffffffff)). //nolint:gosec // the amount is a positive fixture, the mask keeps the key bounded
 		Scan(&bidID)
 	require.NoError(t, err)
 
