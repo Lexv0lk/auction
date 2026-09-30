@@ -19,6 +19,26 @@ export DATABASE_URL
 export SEED_ADMIN_PASSWORD
 export SEED_PARTICIPANT_PASSWORD
 
+# Load scenarios (step 15): k6 runs on the host, separate from the release
+# images. The load tool reads the same .env (ports, demo passwords) and is
+# configured only through the environment, like the application itself.
+HTTP_PORT ?= 18080
+LOAD_BASE_URL ?= http://127.0.0.1:$(HTTP_PORT)
+LOAD_RESULTS_DIR ?= load/results
+LOAD_APP_VERSION ?= $(shell git rev-parse --short HEAD 2>/dev/null)
+# Deferred: evaluated only when a load target runs, so plain make check
+# never pays for a Docker/k6 probe.
+LOAD_DB_VERSION = $(shell docker compose exec -T db postgres --version 2>/dev/null | cut -d' ' -f1-2)
+LOAD_K6_VERSION = $(shell k6 version 2>/dev/null)
+LOAD_HOST_OS = $(shell uname -srm 2>/dev/null)
+export LOAD_BASE_URL LOAD_RESULTS_DIR LOAD_APP_VERSION LOAD_DB_VERSION LOAD_K6_VERSION LOAD_HOST_OS
+export LOAD_ADMIN_LOGIN LOAD_ADMIN_PASSWORD LOAD_PARTICIPANT_PASSWORD LOAD_PARTICIPANT_LOGINS
+export LOAD_VUS LOAD_WARMUP LOAD_DURATION LOAD_PAUSE LOAD_PROFILE LOAD_RUN_ID
+export LOAD_CATEGORIES LOAD_LOTS LOAD_CATALOG_DEADLINE_HOURS
+export LOAD_BID_STEP LOAD_BID_START_PRICE LOAD_REPEATS LOAD_BID_MARGIN
+export VERIFY_MODE VERIFY_LOT_TITLE VERIFY_TITLE_PREFIX VERIFY_EXPECTED_NEW
+export VERIFY_UNCERTAIN VERIFY_EXPECTED_LOTS VERIFY_WAIT VERIFY_OUTPUT
+
 ifeq ($(OS),Windows_NT)
 EXE := .exe
 RUN := pwsh -NoProfile -File ./scripts/dev.ps1 -EnvFile "$(ENV_FILE)"
@@ -27,7 +47,7 @@ EXE :=
 RUN := $(GO) run ./cmd/server
 endif
 
-.PHONY: help go-version build app-help run migrate seed images release up down replicas replicas-down server-logs lint-version lint fmt fmt-check test vet test-race test-integration test-integration-race test-integration-repeat check
+.PHONY: help go-version build app-help run migrate seed images release up down replicas replicas-down server-logs load-catalog load-bids load-verify lint-version lint fmt fmt-check test vet test-race test-integration test-integration-race test-integration-repeat check
 
 help:
 	@echo build             Build bin/server
@@ -42,6 +62,9 @@ help:
 	@echo replicas          Start two identical server replicas with unique host ports
 	@echo replicas-down     Stop and remove the two replicas (the database stays up)
 	@echo server-logs       Follow the server container logs
+	@echo load-catalog      Run the catalog-reading load scenario (k6; make up first)
+	@echo load-bids         Run the competing-bids load scenario (k6; make up first)
+	@echo load-verify       Check the loaded database after a scenario (go run ./load/verify)
 	@echo lint              Check Go code with golangci-lint
 	@echo fmt               Format Go code with golangci-lint
 	@echo fmt-check         Check Go formatting without changing files
@@ -93,6 +116,20 @@ replicas-down:
 
 server-logs:
 	docker compose logs -f server
+
+# The load tool writes its JSON reports into load/results; the k6 scripts
+# need that directory to exist when the run finishes.
+load-catalog:
+	@mkdir -p $(LOAD_RESULTS_DIR)
+	k6 run load/catalog_read.js
+
+load-bids:
+	@mkdir -p $(LOAD_RESULTS_DIR)
+	k6 run load/bidding.js
+
+load-verify:
+	@mkdir -p $(LOAD_RESULTS_DIR)
+	$(GO) run ./load/verify
 
 migrate:
 	docker compose run --rm --build migrate

@@ -39,3 +39,4 @@ scripts/release.sh
 # Dockerfiles themselves are not needed inside the images
 Dockerfile
 .dockerignore
+load/
